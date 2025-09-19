@@ -1,217 +1,192 @@
-"""
-PKL 데이터 로드 및 필터링 유틸리티
-"""
+# utils/data_loader.py
 import streamlit as st
 import pandas as pd
-import pickle
+import numpy as np
 import os
 
 @st.cache_data
-def load_data():
-    """PKL 파일에서 논문/특허 데이터 로드"""
-    paper_path = 'data/pap_detail.pkl'
-    patent_path = 'data/pat_detail.pkl'
+def load_data(file_path):
+    """엑셀 파일에서 데이터 로드"""
+    try:
+        # 파일 존재 확인
+        if not os.path.exists(file_path):
+            st.error(f"파일이 존재하지 않습니다: {file_path}")
+            return None
+            
+        # 엑셀 파일 로드
+        df = pd.read_excel(file_path)
+        st.success(f"파일 로드 성공: {file_path}, 데이터 크기: {df.shape}")
+        return df
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {e}")
+        import traceback
+        st.error(f"상세 오류: {traceback.format_exc()}")
+        return None
+
+def create_sample_data():
+    """샘플 데이터 생성"""
+    # 국가 목록
+    countries = ['US', 'CN', 'JP', 'KR', 'DE', 'FR', 'GB', 'IN', 'CA', 'IT', 
+                'AU', 'ES', 'BR', 'RU', 'NL', 'CH', 'SE', 'SG', 'TR', 'PL']
     
-    paper_df = None
-    patent_df = None
+    # 기본 데이터 생성
+    data = []
     
-    # 논문 데이터 로드
-    if os.path.exists(paper_path):
-        with open(paper_path, 'rb') as f:
-            paper_df = pickle.load(f)
-        paper_df['datatype'] = 'paper'
+    # 논문 데이터
+    for country in countries:
+        papers = int(np.random.exponential(1000) * (1 + countries.index(country) * 0.1))
+        citations = int(papers * np.random.uniform(5, 15))
+        h_index = int(np.sqrt(citations) * np.random.uniform(0.8, 1.2))
+        
+        data.append({
+            "구분": "1. 논문",
+            "Country": country,
+            "논문 건수": papers,
+            "Total_Citations": citations,
+            "Avg_Citations": citations / papers if papers > 0 else 0,
+            "H_Index": h_index,
+            "Top10_Ratio(%)": np.random.uniform(5, 20),
+            "Q1_Ratio(%)": np.random.uniform(30, 60),
+            "Collaboration_Ratio(%)": np.random.uniform(40, 80),
+            "label_m": np.random.randint(1, 39),  # 38대 분류
+            "label_s": np.random.randint(1, 83),  # 82대 분류
+            "label_m_title": f"기술분류_38_{np.random.randint(1, 39)}",
+            "label_s_title": f"기술분류_82_{np.random.randint(1, 83)}"
+        })
     
-    # 특허 데이터 로드  
-    if os.path.exists(patent_path):
-        with open(patent_path, 'rb') as f:
-            patent_df = pickle.load(f)
-        patent_df['datatype'] = 'patent'
+    # 특허 데이터
+    for country in countries:
+        patents = int(np.random.exponential(800) * (1 + countries.index(country) * 0.08))
+        citations = int(patents * np.random.uniform(3, 10))
+        h_index = int(np.sqrt(citations) * np.random.uniform(0.7, 1.1))
+        
+        data.append({
+            "구분": "2. 특허",
+            "Country": country,
+            "total_papers_granted": patents,
+            "total_citations": citations,
+            "avg_citations": citations / patents if patents > 0 else 0,
+            "h_index": h_index,
+            "triadic_ratio": np.random.uniform(0.05, 0.3),
+            "foreign_filing_intensity": np.random.uniform(2, 8),
+            "patent_impact": np.random.uniform(0.5, 2),
+            "label_m": np.random.randint(1, 39),  # 38대 분류
+            "label_s": np.random.randint(1, 83),  # 82대 분류
+            "label_m_title": f"기술분류_38_{np.random.randint(1, 39)}",
+            "label_s_title": f"기술분류_82_{np.random.randint(1, 83)}"
+        })
+    
+    return pd.DataFrame(data)
+
+def preprocess_data(df):
+    """데이터 전처리"""
+    if df is None:
+        return None, None
+    
+    # 논문/특허 구분
+    if '구분' in df.columns:
+        paper_df = df[df['구분'] == '1. 논문'].copy()
+        patent_df = df[df['구분'] == '2. 특허'].copy()
+    else:
+        st.error("데이터에 '구분' 컬럼이 없습니다.")
+        return None, None
+    
+    # 국가 컬럼 확인
+    country_col = None
+    for col_name in ['Country', 'country']:
+        if col_name in paper_df.columns:
+            country_col = col_name
+            break
+    
+    if country_col is None:
+        st.warning("국가 컬럼을 찾을 수 없습니다.")
+    else:
+        # 국가 컬럼 이름 표준화
+        if country_col != 'Country':
+            paper_df['Country'] = paper_df[country_col]
+            patent_df['Country'] = patent_df[country_col]
+    
+    # 기술 분류 정보 추가
+    for data_df in [paper_df, patent_df]:
+        if 'label_m' in data_df.columns and 'label_m_title' in data_df.columns:
+            data_df['기술분류_38'] = data_df['label_m_title']
+        
+        if 'label_s' in data_df.columns and 'label_s_title' in data_df.columns:
+            data_df['기술분류_82'] = data_df['label_s_title']
     
     return paper_df, patent_df
 
-def filter_data(paper_df, patent_df, sidebar):
-    """사이드바 필터 적용"""
-    
-    # 연도 필터
-    min_year = 2011
-    max_year = 2024
-    
-    year_range = sidebar.slider(
-        "연도 범위",
-        min_year, max_year,
-        (2015, 2024)
-    )
-    
-    # 기술 분야 필터
-    tech_col_paper = None
-    tech_col_patent = None
-    
-    if paper_df is not None:
-        for col in paper_df.columns:
-            if any(keyword in col.lower() for keyword in ['label', 'tech', '기술', '분야']):
-                tech_col_paper = col
+def get_top20_countries(paper_df, patent_df):
+    """논문과 특허 데이터에서 상위 20개국 필터링"""
+    # 논문 기준 상위 국가
+    paper_top = []
+    if paper_df is not None and 'Country' in paper_df.columns:
+        # 논문 지표 후보들
+        paper_metrics = ['논문 건수', 'Total_Papers', '논문 점유율(%)', 'H_Index']
+        
+        for metric in paper_metrics:
+            if metric in paper_df.columns:
+                paper_top = paper_df.groupby('Country')[metric].sum().nlargest(20).index.tolist()
+                st.info(f"논문 기준 상위 20개국: {', '.join(paper_top[:5])}...")
                 break
     
-    if patent_df is not None:
-        for col in patent_df.columns:
-            if any(keyword in col.lower() for keyword in ['label', 'tech', '기술', '분야']):
-                tech_col_patent = col
+    # 특허 기준 상위 국가
+    patent_top = []
+    if patent_df is not None and 'Country' in patent_df.columns:
+        # 특허 지표 후보들
+        patent_metrics = ['total_papers_granted', 'patent_share', 'h_index', 'total_citations']
+        
+        for metric in patent_metrics:
+            if metric in patent_df.columns:
+                patent_top = patent_df.groupby('Country')[metric].sum().nlargest(20).index.tolist()
+                st.info(f"특허 기준 상위 20개국: {', '.join(patent_top[:5])}...")
                 break
     
-    # 기술 분야 목록 수집
-    tech_labels = []
-    if tech_col_paper and paper_df is not None:
-        tech_labels.extend(paper_df[tech_col_paper].unique().tolist())
-    if tech_col_patent and patent_df is not None:
-        tech_labels.extend(patent_df[tech_col_patent].unique().tolist())
-    tech_labels = list(set(tech_labels))
-    tech_labels.sort()
+    # 우선순위: 논문 top10 + 특허 top10 (중복 제거)
+    combined = list(dict.fromkeys(paper_top[:10] + patent_top[:10]))
     
-    # 기술 분야 선택
-    selected_tech = sidebar.multiselect(
-        "기술 분야 선택",
-        options=['전체'] + tech_labels,
-        default=['전체']
-    )
+    # 남은 자리는 논문, 특허 순위로 채움
+    if len(combined) < 20:
+        remaining = 20 - len(combined)
+        extra_countries = [c for c in paper_top[10:] + patent_top[10:] if c not in combined]
+        combined.extend(extra_countries[:remaining])
     
-    # 국가 컬럼명 찾기
-    paper_country_col = None
-    patent_country_col = None
+    # 최대 20개로 제한
+    top_countries = combined[:20]
     
-    if paper_df is not None:
-        for col in paper_df.columns:
-            if col.lower() in ['country', 'nation', '국가']:
-                paper_country_col = col
-                break
+    st.success(f"분석 대상 상위 20개국 선정 완료: {', '.join(top_countries)}")
     
-    if patent_df is not None:
-        for col in patent_df.columns:
-            if col.lower() in ['country', 'nation', '국가']:
-                patent_country_col = col
-                break
+    return top_countries
     
-    # 국가 필터 준비
-    paper_countries = [] if paper_country_col is None else paper_df[paper_country_col].unique().tolist()
-    patent_countries = [] if patent_country_col is None else patent_df[patent_country_col].unique().tolist()
-    all_countries = list(set(paper_countries + patent_countries))
-    
-    # 주요 국가 매핑
-    country_mapping = {
-        '중국': ['CN', 'China', '중국'],
-        '미국': ['US', 'United States', '미국'],
-        'EU': ['EU', 'European Union'],
-        '한국': ['KR', 'Korea', '한국', '대한민국'],
-        '일본': ['JP', 'Japan', '일본'],
-        '독일': ['DE', 'Germany', '독일'],
-        '영국': ['GB', 'UK', 'United Kingdom', '영국'],
-        '인도': ['IN', 'India', '인도']
-    }
-    
-    selected_countries = sidebar.multiselect(
-        "국가 선택",
-        options=['전체'] + list(country_mapping.keys()),
-        default=['전체']
-    )
-    
-    # 필터링 적용
-    filtered_paper = None
-    filtered_patent = None
-    
-    if paper_df is not None:
-        filtered_paper = paper_df.copy()
+def show_debug_info(df, paper_df, patent_df):
+    """디버깅 정보 표시"""
+    with st.expander("데이터 디버깅 정보", expanded=False):
+        st.write("### 원본 데이터")
+        st.write(f"크기: {df.shape}")
+        st.write(f"컬럼: {', '.join(df.columns)}")
+        st.write("첫 5개 행:")
+        st.dataframe(df.head())
         
-        # Year 컬럼 찾기
-        year_col = None
-        for col in filtered_paper.columns:
-            if col.lower() in ['year', '연도']:
-                year_col = col
-                break
+        st.write("### 논문 데이터")
+        if paper_df is not None:
+            st.write(f"크기: {paper_df.shape}")
+            st.write("사용 가능한 지표 컬럼:")
+            for col in paper_df.columns:
+                if paper_df[col].dtype in ['int64', 'float64']:
+                    st.write(f"- {col} ({paper_df[col].dtype})")
+            st.write("첫 5개 행:")
+            st.dataframe(paper_df.head())
+        else:
+            st.write("논문 데이터 없음")
         
-        if year_col:
-            filtered_paper = filtered_paper[
-                (filtered_paper[year_col] >= year_range[0]) & 
-                (filtered_paper[year_col] <= year_range[1])
-            ]
-        
-        # 기술 분야 필터
-        if '전체' not in selected_tech and tech_col_paper:
-            filtered_paper = filtered_paper[filtered_paper[tech_col_paper].isin(selected_tech)]
-        
-        # 국가 필터
-        if '전체' not in selected_countries and paper_country_col:
-            country_filter = []
-            for country in selected_countries:
-                country_filter.extend(country_mapping.get(country, [country]))
-            filtered_paper = filtered_paper[filtered_paper[paper_country_col].isin(country_filter)]
-    
-    if patent_df is not None:
-        filtered_patent = patent_df.copy()
-        
-        # Year 컬럼 찾기
-        year_col = None
-        for col in filtered_patent.columns:
-            if col.lower() in ['year', '연도']:
-                year_col = col
-                break
-        
-        if year_col:
-            filtered_patent = filtered_patent[
-                (filtered_patent[year_col] >= year_range[0]) & 
-                (filtered_patent[year_col] <= year_range[1])
-            ]
-        
-        # 기술 분야 필터
-        if '전체' not in selected_tech and tech_col_patent:
-            filtered_patent = filtered_patent[filtered_patent[tech_col_patent].isin(selected_tech)]
-        
-        # 국가 필터
-        if '전체' not in selected_countries and patent_country_col:
-            country_filter = []
-            for country in selected_countries:
-                country_filter.extend(country_mapping.get(country, [country]))
-            filtered_patent = filtered_patent[filtered_patent[patent_country_col].isin(country_filter)]
-    
-    return filtered_paper, filtered_patent
-
-def get_column_names(df):
-    """데이터프레임의 컬럼명을 표준화된 이름으로 매핑"""
-    column_mapping = {
-        # Paper columns
-        'totalpapers': 'total_papers',
-        'totalpaperscount': 'total_papers',
-        'totalcitations': 'total_citations',
-        'avgcitations': 'avg_citations',
-        'hindex': 'h_index',
-        'top10paperscitations': 'top10_citations',
-        'top10papersmrnif': 'top10_mrnif',
-        'top10ratio(%)': 'top10_ratio',
-        'q1ratio(%)': 'q1_ratio',
-        'collaborationratio(%)': 'collaboration_ratio',
-        'avgmrnif': 'avg_mrnif',
-        'productivityscore': 'productivity_score',
-        'impactscore': 'impact_score',
-        
-        # Patent columns
-        'totalpapers': 'total_papers',  # patent에서도 동일 사용
-        'totalcitations': 'total_citations',
-        'avgcitations': 'avg_citations',
-        'hindex': 'h_index',
-        'gindex': 'g_index',
-        'triadicratio': 'triadic_ratio',
-        'triadiccount': 'triadic_count',
-        'totalclaims': 'total_claims',
-        'avgclaims': 'avg_claims',
-        'avgfamilycountries': 'avg_family_countries',
-        'citationsperclaim': 'citations_per_claim'
-    }
-    
-    if df is None:
-        return {}
-    
-    result = {}
-    for col in df.columns:
-        clean_col = col.lower().replace('_', '').replace(' ', '').replace('-', '')
-        if clean_col in column_mapping:
-            result[column_mapping[clean_col]] = col
-    
-    return result
+        st.write("### 특허 데이터")
+        if patent_df is not None:
+            st.write(f"크기: {patent_df.shape}")
+            st.write("사용 가능한 지표 컬럼:")
+            for col in patent_df.columns:
+                if patent_df[col].dtype in ['int64', 'float64']:
+                    st.write(f"- {col} ({patent_df[col].dtype})")
+            st.write("첫 5개 행:")
+            st.dataframe(patent_df.head())
+        else:
+            st.write("특허 데이터 없음")
