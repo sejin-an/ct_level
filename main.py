@@ -514,9 +514,6 @@ def apply_data_filters(papers_df, patents_df, filters):
     
     except Exception as e:
         st.error(f"데이터 필터링 중 오류: {e}")
-        # 디버깅 정보
-        if papers_df is not None:
-            st.write("논문 데이터 컬럼:", list(papers_df.columns))
         return papers_df, patents_df
 
 def main():
@@ -535,28 +532,6 @@ def main():
         return
     
     papers_df, patents_df = load_data()
-    
-    # 데이터 구조 디버깅 정보
-    with st.expander("🔍 데이터 구조 확인"):
-        if papers_df is not None and not papers_df.empty:
-            st.write("**논문 데이터 정보:**")
-            st.write(f"- 행 수: {len(papers_df):,}")
-            st.write(f"- 컬럼 수: {len(papers_df.columns)}")
-            st.write(f"- 컬럼명: {list(papers_df.columns)}")
-            st.write("**첫 3행 미리보기:**")
-            st.dataframe(papers_df.head(3))
-        else:
-            st.write("**논문 데이터: 없음 또는 비어있음**")
-        
-        if patents_df is not None and not patents_df.empty:
-            st.write("**특허 데이터 정보:**")
-            st.write(f"- 행 수: {len(patents_df):,}")
-            st.write(f"- 컬럼 수: {len(patents_df.columns)}")
-            st.write(f"- 컬럼명: {list(patents_df.columns)}")
-            st.write("**첫 3행 미리보기:**")
-            st.dataframe(patents_df.head(3))
-        else:
-            st.write("**특허 데이터: 없음 또는 비어있음**")
     
     if papers_df is None and patents_df is None:
         st.error("분석할 데이터가 없습니다. 데이터 파일을 확인해주세요.")
