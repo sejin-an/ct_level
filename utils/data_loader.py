@@ -1,404 +1,275 @@
 """
-국가별 비교 분석 컴포넌트
-components/country.py
+데이터 로더 및 전처리 유틸리티
+utils/data_loader.py
 """
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
+import os
 
-def render_country_overview(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """국가별 개요"""
-    st.subheader("🌍 국가별 분석 개요")
+@st.cache_data
+def load_data():
+    """엑셀 파일에서 데이터 로드"""
+    excel_file = '_통합평가자료.xlsx'
     
-    if papers_df.empty or 'Country' not in papers_df.columns:
-        st.warning("국가별 데이터가 없습니다.")
-        return
+    papers_df = None
+    patents_df = None
     
-    # 국가별 기본 통계
-    country_stats = papers_df['Country'].value_counts().head(10)
-    
-    col1, col2 = st.co"""
-국가별 비교 분석 컴포넌트
-components/country.py
-"""
-
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
-
-def render_country_comparison_dashboard(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """국가별 비교 대시보드"""
-    st.subheader("🌍 국가별 종합 비교")
-    
-    # 연도 선택
-    col1, col2, col3 = st.columns([1, 1, 2])
-    
-    with col1:
-        available_years = sorted(set(papers_df['Year'].unique()) | set(patents_df['Year'].unique())) if not papers_df.empty or not patents_df.empty else []
-        if available_years:
-            selected_year = st.selectbox("분석 연도", available_years, index=len(available_years)-1)
-        else:
-            st.warning("연도 데이터가 없습니다.")
-            return
-    
-    with col2:
-        # 정렬 기준 선택
-        sort_options = ["논문 수", "특허 수", "H-Index", "Triadic 비율"]
-        sort_by = st.selectbox("정렬 기준", sort_options)
-    
-    # 선택된 연도 데이터 필터링
-    papers_year = papers_df[papers_df['Year'] == selected_year] if not papers_df.empty else pd.DataFrame()
-    patents_year = patents_df[patents_df['Year'] == selected_year] if not patents_df.empty else pd.DataFrame()
-    
-    # 국가별 통합 데이터 생성
-    country_data = create_country_summary(papers_year, patents_year)
-    
-    if country_data.empty:
-        st.warning("선택된 연도에 대한 데이터가 없습니다.")
-        return
-    
-    # 정렬
-    country_data = sort_country_data(country_data, sort_by)
-    
-    # 시각화
-    render_country_charts(country_data, selected_year)
-    
-    # 상세 테이블
-    render_country_table(country_data, selected_year)
-
-def create_country_summary(papers_df: pd.DataFrame, patents_df: pd.DataFrame) -> pd.DataFrame:
-    """국가별 요약 데이터 생성"""
-    summary_data = {}
-    
-    # 논문 데이터 처리
-    if not papers_df.empty:
-        for _, row in papers_df.iterrows():
-            country = row['Country']
-            if country not in summary_data:
-                summary_data[country] = {}
+    if os.path.exists(excel_file):
+        try:
+            # 엑셀 파일의 모든 시트 확인
+            excel_sheets = pd.ExcelFile(excel_file).sheet_names
+            st.sidebar.info(f"발견된 시트: {', '.join(excel_sheets)}")
             
-            summary_data[country].update({
-                'Papers': row.get('Total_Papers', 0),
-                'H_Index': row.get('H_Index', 0),
-                'Q1_Ratio': row.get('Q1_Ratio(%)', 0),
-                'Collaboration_Ratio': row.get('Collaboration_Ratio(%)', 0),
-                'Avg_Citations': row.get('Avg_Citations', 0),
-                'Avg_mrnif': row.get('Avg_mrnif', 0)
-            })
-    
-    # 특허 데이터 처리
-    if not patents_df.empty:
-        patent_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
-        
-        for _, row in patents_df.iterrows():
-            country = row['Country']
-            if country not in summary_data:
-                summary_data[country] = {}
+            # 첫 번째 시트를 논문 데이터로 사용
+            papers_df = pd.read_excel(excel_file, sheet_name=0)
+            st.sidebar.success(f"논문 데이터 로드 완료: {len(papers_df):,} 행, {len(papers_df.columns)} 열")
             
-            summary_data[country].update({
-                'Patents': row.get(patent_col, 0),
-                'Triadic_Ratio': row.get('triadic_ratio', 0) * 100 if 'triadic_ratio' in row else 0,
-                'Claims_per_Patent': row.get('claims_per_patent', 0),
-                'Foreign_Filing': row.get('foreign_filing_intensity', 0),
-                'Patent_H_Index': row.get('h_index', 0)
-            })
+            # 두 번째 시트가 있으면 특허 데이터로 사용
+            if len(excel_sheets) > 1:
+                patents_df = pd.read_excel(excel_file, sheet_name=1)
+                st.sidebar.success(f"특허 데이터 로드 완료: {len(patents_df):,} 행, {len(patents_df.columns)} 열")
+            else:
+                # 특허 관련 컬럼이 있는지 확인하여 분리
+                patent_cols = [col for col in papers_df.columns if any(keyword in col.lower() 
+                             for keyword in ['patent', 'triadic', 'claims', '특허'])]
+                if patent_cols:
+                    patents_df = papers_df[['Year', 'Country'] + patent_cols].copy()
+                    st.sidebar.info("논문 데이터에서 특허 관련 컬럼을 분리했습니다.")
+            
+        except Exception as e:
+            st.sidebar.error(f"엑셀 파일 로드 실패: {e}")
+    else:
+        st.sidebar.warning(f"엑셀 파일을 찾을 수 없습니다: {excel_file}")
     
-    # DataFrame으로 변환
-    if summary_data:
-        df = pd.DataFrame.from_dict(summary_data, orient='index').reset_index()
-        df = df.rename(columns={'index': 'Country'})
-        df = df.fillna(0)
-        return df
-    
-    return pd.DataFrame()
+    return papers_df, patents_df
 
-def sort_country_data(df: pd.DataFrame, sort_by: str) -> pd.DataFrame:
-    """국가 데이터 정렬"""
-    sort_mapping = {
-        "논문 수": "Papers",
-        "특허 수": "Patents", 
-        "H-Index": "H_Index",
-        "Triadic 비율": "Triadic_Ratio"
-    }
+def filter_data(papers_df, patents_df, sidebar):
+    """사이드바 필터 적용"""
     
-    sort_col = sort_mapping.get(sort_by, "Papers")
-    if sort_col in df.columns:
-        return df.sort_values(sort_col, ascending=False)
+    # 연도 범위 설정
+    min_year, max_year = get_year_range(papers_df, patents_df)
+    
+    year_range = sidebar.slider(
+        "연도 범위",
+        min_value=int(min_year),
+        max_value=int(max_year),
+        value=(int(min_year), int(max_year))
+    )
+    
+    # 국가 필터
+    available_countries = get_all_countries(papers_df, patents_df)
+    
+    if available_countries:
+        selected_countries = sidebar.multiselect(
+            "국가 선택",
+            options=['전체'] + available_countries,
+            default=['전체']
+        )
+    else:
+        selected_countries = ['전체']
+    
+    # 필터링 적용
+    filtered_papers = apply_year_filter(papers_df, year_range)
+    filtered_patents = apply_year_filter(patents_df, year_range)
+    
+    if '전체' not in selected_countries:
+        filtered_papers = apply_country_filter(filtered_papers, selected_countries)
+        filtered_patents = apply_country_filter(filtered_patents, selected_countries)
+    
+    return filtered_papers, filtered_patents
+
+def get_year_range(papers_df, patents_df):
+    """데이터에서 연도 범위 추출"""
+    min_year, max_year = 2015, 2024
+    
+    for df in [papers_df, patents_df]:
+        if df is not None:
+            year_col = find_year_column(df)
+            if year_col:
+                df_min = df[year_col].min()
+                df_max = df[year_col].max()
+                min_year = min(min_year, df_min)
+                max_year = max(max_year, df_max)
+    
+    return min_year, max_year
+
+def get_all_countries(papers_df, patents_df):
+    """모든 데이터에서 국가 목록 추출"""
+    countries = set()
+    
+    for df in [papers_df, patents_df]:
+        if df is not None:
+            country_col = find_country_column(df)
+            if country_col:
+                countries.update(df[country_col].dropna().unique())
+    
+    return sorted(list(countries))
+
+def find_year_column(df):
+    """연도 컬럼 찾기"""
+    if df is None:
+        return None
+    
+    for col in df.columns:
+        if col.lower() in ['year', '연도', 'yr']:
+            return col
+    return None
+
+def find_country_column(df):
+    """국가 컬럼 찾기"""
+    if df is None:
+        return None
+    
+    for col in df.columns:
+        if col.lower() in ['country', '국가', 'nation', 'countries']:
+            return col
+    return None
+
+def apply_year_filter(df, year_range):
+    """연도 필터 적용"""
+    if df is None:
+        return None
+    
+    year_col = find_year_column(df)
+    if year_col:
+        return df[(df[year_col] >= year_range[0]) & (df[year_col] <= year_range[1])]
+    
     return df
 
-def render_country_charts(country_data: pd.DataFrame, selected_year: int):
-    """국가별 차트 렌더링"""
-    col1, col2 = st.columns(2)
+def apply_country_filter(df, selected_countries):
+    """국가 필터 적용"""
+    if df is None:
+        return None
     
-    with col1:
-        # 논문 수 vs H-Index
-        if 'Papers' in country_data.columns and 'H_Index' in country_data.columns:
-            fig = px.scatter(
-                country_data,
-                x='Papers',
-                y='H_Index',
-                color='Q1_Ratio' if 'Q1_Ratio' in country_data.columns else None,
-                size='Collaboration_Ratio' if 'Collaboration_Ratio' in country_data.columns else None,
-                hover_name='Country',
-                title=f'{selected_year}년 논문 수 vs H-Index',
-                color_continuous_scale='Viridis'
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+    country_col = find_country_column(df)
+    if country_col:
+        return df[df[country_col].isin(selected_countries)]
     
-    with col2:
-        # 특허 수 vs Triadic 비율
-        if 'Patents' in country_data.columns and 'Triadic_Ratio' in country_data.columns:
-            fig = px.scatter(
-                country_data,
-                x='Patents',
-                y='Triadic_Ratio',
-                color='Claims_per_Patent' if 'Claims_per_Patent' in country_data.columns else None,
-                size='Foreign_Filing' if 'Foreign_Filing' in country_data.columns else None,
-                hover_name='Country',
-                title=f'{selected_year}년 특허 수 vs Triadic 비율',
-                color_continuous_scale='Plasma'
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+    return df
 
-def render_country_rankings(country_data: pd.DataFrame, top_n: int = 10):
-    """국가별 순위 차트"""
-    st.subheader(f"🏆 상위 {top_n}개국 순위")
-    
-    # 4개 지표별 상위 국가
-    metrics = [
-        ('Papers', '논문 수', '#1f77b4'),
-        ('Patents', '특허 수', '#ff7f0e'), 
-        ('H_Index', 'H-Index', '#2ca02c'),
-        ('Triadic_Ratio', 'Triadic 비율', '#d62728')
-    ]
-    
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=[metric[1] for metric in metrics]
-    )
-    
-    for i, (col, title, color) in enumerate(metrics):
-        if col in country_data.columns:
-            top_countries = country_data.nlargest(top_n, col)
-            
-            row = (i // 2) + 1
-            col_num = (i % 2) + 1
-            
-            fig.add_trace(
-                go.Bar(
-                    x=top_countries['Country'],
-                    y=top_countries[col],
-                    name=title,
-                    marker_color=color,
-                    showlegend=False
-                ),
-                row=row, col=col_num
-            )
-            
-            # 축 라벨 업데이트
-            fig.update_xaxes(tickangle=-45, row=row, col=col_num)
-    
-    fig.update_layout(height=500, title_text="주요 지표별 국가 순위")
-    st.plotly_chart(fig, use_container_width=True)
+# 호환성을 위한 추가 함수들
+def get_available_countries(papers_df, patents_df=None):
+    """사용 가능한 국가 목록 반환 (호환성)"""
+    return get_all_countries(papers_df, patents_df)
 
-def render_radar_comparison(country_data: pd.DataFrame, max_countries: int = 5):
-    """레이더 차트 국가 비교"""
-    st.subheader("🎯 다차원 성과 비교")
+def get_available_years(papers_df, patents_df=None):
+    """사용 가능한 연도 범위 반환 (호환성)"""
+    min_year, max_year = get_year_range(papers_df, patents_df)
+    return int(min_year), int(max_year)
+
+class DataLoader:
+    """데이터 로더 클래스 (호환성)"""
     
-    # 상위 국가 선택 (논문 수 기준)
-    if 'Papers' in country_data.columns:
-        top_countries = country_data.nlargest(max_countries, 'Papers')
-    else:
-        top_countries = country_data.head(max_countries)
+    def __init__(self):
+        self.papers_df = None
+        self.patents_df = None
     
-    # 레이더 차트 메트릭 정의
-    radar_metrics = [
-        ('Papers', '논문 수'),
-        ('Patents', '특허 수'),
-        ('H_Index', 'H-Index'),
-        ('Q1_Ratio', 'Q1 비율'),
-        ('Triadic_Ratio', 'Triadic 비율')
-    ]
-    
-    fig = go.Figure()
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
-    
-    for i, (_, country_row) in enumerate(top_countries.iterrows()):
-        values = []
-        labels = []
+    def load_data(self, sample_size="전체"):
+        """데이터 로드"""
+        excel_file = '_통합평가자료.xlsx'
         
-        for col, label in radar_metrics:
-            if col in country_data.columns:
-                # 정규화 (0-100 스케일)
-                max_val = country_data[col].max()
-                min_val = country_data[col].min()
+        if os.path.exists(excel_file):
+            try:
+                # 전체 데이터 로드
+                df = pd.read_excel(excel_file, sheet_name=0)
                 
-                if max_val != min_val:
-                    normalized_val = ((country_row[col] - min_val) / (max_val - min_val)) * 100
-                else:
-                    normalized_val = 50
+                # 샘플링
+                if sample_size != "전체" and isinstance(sample_size, int):
+                    if len(df) > sample_size:
+                        df = df.sample(n=sample_size, random_state=42)
                 
-                values.append(normalized_val)
-                labels.append(label)
-        
-        if values:
-            # 닫힌 형태를 위해 첫 번째 값을 마지막에 추가
-            values.append(values[0])
-            labels.append(labels[0])
-            
-            fig.add_trace(go.Scatterpolar(
-                r=values,
-                theta=labels,
-                fill='toself',
-                name=country_row['Country'],
-                line_color=colors[i % len(colors)],
-                fillcolor=colors[i % len(colors)],
-                opacity=0.3
-            ))
-    
-    fig.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, 100]
-            )),
-        showlegend=True,
-        title="상위 국가 다차원 성과 비교",
-        height=500
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-def render_country_table(country_data: pd.DataFrame, selected_year: int):
-    """국가별 상세 테이블"""
-    st.subheader("📋 국가별 상세 데이터")
-    
-    # 컬럼명 한글화
-    display_columns = {
-        'Country': '국가',
-        'Papers': '논문 수',
-        'Patents': '특허 수',
-        'H_Index': 'H-Index',
-        'Q1_Ratio': 'Q1 비율 (%)',
-        'Collaboration_Ratio': '국제협력 비율 (%)',
-        'Triadic_Ratio': 'Triadic 비율 (%)',
-        'Claims_per_Patent': '특허당 청구항',
-        'Foreign_Filing': '해외출원 강도',
-        'Avg_Citations': '평균 인용수',
-        'Avg_mrnif': '평균 MRNIF'
-    }
-    
-    # 사용 가능한 컬럼만 선택
-    available_cols = [col for col in display_columns.keys() if col in country_data.columns]
-    
-    if available_cols:
-        display_df = country_data[available_cols].copy()
-        
-        # 컬럼명 변경
-        rename_dict = {col: display_columns[col] for col in available_cols}
-        display_df = display_df.rename(columns=rename_dict)
-        
-        # 숫자 포맷팅
-        numeric_cols = display_df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if '비율' in col or '%' in col:
-                display_df[col] = display_df[col].apply(lambda x: f"{x:.1f}%")
-            elif 'Index' in col or '인용수' in col or '청구항' in col:
-                display_df[col] = display_df[col].apply(lambda x: f"{x:.1f}")
-            else:
-                display_df[col] = display_df[col].apply(lambda x: f"{x:,.0f}" if x >= 1 else f"{x:.2f}")
-        
-        # 테이블 표시
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # 다운로드 버튼
-        csv = display_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 CSV 다운로드",
-            data=csv,
-            file_name=f'country_comparison_{selected_year}.csv',
-            mime='text/csv'
-        )
-
-def render_competitive_positioning(country_data: pd.DataFrame):
-    """경쟁력 포지셔닝 매트릭스"""
-    st.subheader("🎯 경쟁력 포지셔닝")
-    
-    if 'Papers' not in country_data.columns or 'Patents' not in country_data.columns:
-        st.warning("논문과 특허 데이터가 모두 필요합니다.")
-        return
-    
-    # 사분면 분석
-    papers_median = country_data['Papers'].median()
-    patents_median = country_data['Patents'].median()
-    
-    # 사분면 라벨링
-    def get_quadrant(row):
-        if row['Papers'] >= papers_median and row['Patents'] >= patents_median:
-            return "리더 (High-High)"
-        elif row['Papers'] >= papers_median and row['Patents'] < patents_median:
-            return "연구 중심 (High-Low)"
-        elif row['Papers'] < papers_median and row['Patents'] >= patents_median:
-            return "상용화 중심 (Low-High)"
+                return df
+            except Exception as e:
+                st.error(f"데이터 로드 실패: {e}")
+                return pd.DataFrame()
         else:
-            return "신흥 국가 (Low-Low)"
+            st.warning("엑셀 파일을 찾을 수 없습니다.")
+            return pd.DataFrame()
     
-    country_data['Quadrant'] = country_data.apply(get_quadrant, axis=1)
+    def preprocess_data(self, df):
+        """데이터 전처리"""
+        if df.empty:
+            return pd.DataFrame(), pd.DataFrame()
+        
+        # 논문 관련 컬럼 확인
+        paper_cols = ['Year', 'Country']
+        for col in df.columns:
+            if any(keyword in col.lower() for keyword in ['paper', 'h_index', 'citation', 'q1', 'collaboration']):
+                paper_cols.append(col)
+        
+        # 특허 관련 컬럼 확인
+        patent_cols = ['Year', 'Country']
+        for col in df.columns:
+            if any(keyword in col.lower() for keyword in ['patent', 'triadic', 'claims']):
+                patent_cols.append(col)
+        
+        # 중복 제거
+        paper_cols = list(set(paper_cols))
+        patent_cols = list(set(patent_cols))
+        
+        # 실제 존재하는 컬럼만 선택
+        paper_cols = [col for col in paper_cols if col in df.columns]
+        patent_cols = [col for col in patent_cols if col in df.columns]
+        
+        papers_df = df[paper_cols].copy() if paper_cols else pd.DataFrame()
+        patents_df = df[patent_cols].copy() if patent_cols else pd.DataFrame()
+        
+        return papers_df, patents_df
     
-    # 산점도 생성
-    fig = px.scatter(
-        country_data,
-        x='Papers',
-        y='Patents',
-        color='Quadrant',
-        size='H_Index' if 'H_Index' in country_data.columns else None,
-        hover_name='Country',
-        title='국가별 경쟁력 포지셔닝 매트릭스',
-        color_discrete_map={
-            "리더 (High-High)": "#2E8B57",
-            "연구 중심 (High-Low)": "#4169E1", 
-            "상용화 중심 (Low-High)": "#FF8C00",
-            "신흥 국가 (Low-Low)": "#DC143C"
+    def get_summary_stats(self, papers_df, patents_df):
+        """요약 통계 생성"""
+        paper_count = len(papers_df) if papers_df is not None else 0
+        patent_count = len(patents_df) if patents_df is not None else 0
+        
+        year_range = None
+        country_count = 0
+        
+        # 연도 범위 계산
+        all_years = []
+        if papers_df is not None and not papers_df.empty:
+            year_col = find_year_column(papers_df)
+            if year_col:
+                all_years.extend(papers_df[year_col].dropna().tolist())
+        
+        if patents_df is not None and not patents_df.empty:
+            year_col = find_year_column(patents_df)
+            if year_col:
+                all_years.extend(patents_df[year_col].dropna().tolist())
+        
+        if all_years:
+            year_range = (min(all_years), max(all_years))
+        
+        # 국가 수 계산
+        all_countries = set()
+        if papers_df is not None and not papers_df.empty:
+            country_col = find_country_column(papers_df)
+            if country_col:
+                all_countries.update(papers_df[country_col].dropna().unique())
+        
+        if patents_df is not None and not patents_df.empty:
+            country_col = find_country_column(patents_df)
+            if country_col:
+                all_countries.update(patents_df[country_col].dropna().unique())
+        
+        country_count = len(all_countries)
+        
+        return {
+            'paper_count': paper_count,
+            'patent_count': patent_count,
+            'total_count': paper_count + patent_count,
+            'year_range': year_range,
+            'country_count': country_count
         }
-    )
     
-    # 중앙선 추가
-    fig.add_hline(y=patents_median, line_dash="dash", line_color="gray", opacity=0.5)
-    fig.add_vline(x=papers_median, line_dash="dash", line_color="gray", opacity=0.5)
+    def filter_data_by_years(self, papers_df, patents_df, year_range):
+        """연도별 필터링"""
+        filtered_papers = apply_year_filter(papers_df, year_range)
+        filtered_patents = apply_year_filter(patents_df, year_range)
+        return filtered_papers, filtered_patents
     
-    # 사분면 라벨 추가
-    fig.add_annotation(x=papers_median*1.5, y=patents_median*1.5, text="리더", showarrow=False, font_size=12, opacity=0.7)
-    fig.add_annotation(x=papers_median*1.5, y=patents_median*0.5, text="연구중심", showarrow=False, font_size=12, opacity=0.7)
-    fig.add_annotation(x=papers_median*0.5, y=patents_median*1.5, text="상용화중심", showarrow=False, font_size=12, opacity=0.7)
-    fig.add_annotation(x=papers_median*0.5, y=patents_median*0.5, text="신흥국가", showarrow=False, font_size=12, opacity=0.7)
-    
-    fig.update_layout(height=500)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 사분면별 국가 수
-    quadrant_counts = country_data['Quadrant'].value_counts()
-    st.write("**사분면별 국가 분포:**")
-    for quadrant, count in quadrant_counts.items():
-        st.write(f"- {quadrant}: {count}개국")
-
-def render_country_filters():
-    """국가 선택 필터"""
-    return st.multiselect(
-        "비교할 국가 선택",
-        options=[],  # 실제 구현시 국가 리스트 제공
-        default=[],
-        help="분석할 국가를 선택하세요 (최대 10개)"
-    )
+    def filter_data_by_countries(self, papers_df, patents_df, countries):
+        """국가별 필터링"""
+        filtered_papers = apply_country_filter(papers_df, countries)
+        filtered_patents = apply_country_filter(patents_df, countries)
+        return filtered_papers, filtered_patents
