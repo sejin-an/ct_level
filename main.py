@@ -27,7 +27,7 @@ try:
     from utils.data_loader import load_data, get_summary_stats
     
     # 기존 컴포넌트 (함수명 수정)
-    from components.metrics import render_kpi_cards as render_summary_metrics
+    from components.metrics import render_kpi_cards
     from components.trends import render_basic_timeseries
     from components.country import render_country_trends
     
@@ -692,3 +692,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    
+    render_summary_metrics 
