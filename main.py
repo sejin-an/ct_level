@@ -99,68 +99,113 @@ def render_summary_metrics(summary):
         st.metric("🌍 국가 수", f"{country_count}")
 
 def render_research_quality_analysis(papers_df):
-    """연구 품질 분석"""
+    """논문의 질적지표 비교"""
     if papers_df is None or papers_df.empty:
         st.warning("논문 데이터가 없습니다.")
         return
     
-    st.subheader("🔬 연구 품질 분석")
+    st.subheader("🔬 논문의 질적지표 비교")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Q1-Q4 분포
-        if all(col in papers_df.columns for col in ['Q1', 'Q2', 'Q3', 'Q4']):
-            try:
+    try:
+        # 상위 10개국 선정
+        top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(10).index.tolist()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 1. 국가별 Q1-Q4 스택형 차트
+            if all(col in papers_df.columns for col in ['Q1', 'Q2', 'Q3', 'Q4']):
+                import plotly.express as px
+                import plotly.graph_objects as go
+                
+                country_q_data = papers_df[papers_df['Country'].isin(top_countries)].groupby('Country')[['Q1', 'Q2', 'Q3', 'Q4']].sum()
+                
+                fig_stack = go.Figure()
+                fig_stack.add_trace(go.Bar(name='Q1', x=country_q_data.index, y=country_q_data['Q1']))
+                fig_stack.add_trace(go.Bar(name='Q2', x=country_q_data.index, y=country_q_data['Q2']))
+                fig_stack.add_trace(go.Bar(name='Q3', x=country_q_data.index, y=country_q_data['Q3']))
+                fig_stack.add_trace(go.Bar(name='Q4', x=country_q_data.index, y=country_q_data['Q4']))
+                
+                fig_stack.update_layout(
+                    barmode='stack',
+                    title='국가별 저널 품질 분포 (Q1-Q4)',
+                    height=400,
+                    xaxis_tickangle=-45
+                )
+                st.plotly_chart(fig_stack, use_container_width=True)
+        
+        with col2:
+            # 2. 최근5년/과거5년 Q1비율 비교
+            if 'Q1_Ratio(%)' in papers_df.columns:
                 papers_clean, valid_years = safe_get_year_data(papers_df)
                 
-                if valid_years:
-                    import plotly.express as px
-                    latest_year = max(valid_years)
-                    latest_data = papers_clean[papers_clean['Year_numeric'] == latest_year]
+                if valid_years and len(valid_years) >= 10:
+                    recent_years = sorted(valid_years)[-5:]
+                    past_years = sorted(valid_years)[-10:-5]
                     
-                    q_totals = [
-                        latest_data['Q1'].sum(),
-                        latest_data['Q2'].sum(), 
-                        latest_data['Q3'].sum(),
-                        latest_data['Q4'].sum()
-                    ]
+                    recent_data = papers_clean[papers_clean['Year_numeric'].isin(recent_years)]
+                    past_data = papers_clean[papers_clean['Year_numeric'].isin(past_years)]
                     
-                    fig_pie = px.pie(
-                        values=q_totals,
-                        names=['Q1 (최상위)', 'Q2 (상위)', 'Q3 (중위)', 'Q4 (하위)'],
-                        title=f'{int(latest_year)}년 저널 품질 분포'
+                    recent_q1 = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['Q1_Ratio(%)'].mean()
+                    past_q1 = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['Q1_Ratio(%)'].mean()
+                    
+                    comparison_df = pd.DataFrame({
+                        '과거5년': past_q1,
+                        '최근5년': recent_q1
+                    }).fillna(0)
+                    
+                    fig_comp = px.bar(
+                        comparison_df,
+                        title='최근5년 vs 과거5년 Q1 비율 비교',
+                        barmode='group'
                     )
-                    st.plotly_chart(fig_pie, use_container_width=True)
-                else:
-                    st.warning("유효한 연도 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"품질 분포 차트 오류: {e}")
-    
-    with col2:
-        # Q1 비율 트렌드
-        if 'Q1_Ratio(%)' in papers_df.columns:
-            try:
+                    fig_comp.update_layout(height=400, xaxis_tickangle=-45)
+                    st.plotly_chart(fig_comp, use_container_width=True)
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            # 3. 국가별 누적 피인용 규모
+            if 'Total_Citations' in papers_df.columns:
                 papers_clean, valid_years = safe_get_year_data(papers_df)
                 
                 if valid_years and not papers_clean.empty:
-                    import plotly.express as px
-                    yearly_q1 = papers_clean.groupby('Year_numeric')['Q1_Ratio(%)'].mean().reset_index()
-                    yearly_q1.columns = ['Year', 'Q1_Ratio(%)']
+                    citation_data = papers_clean[papers_clean['Country'].isin(top_countries[:5])].groupby(['Year_numeric', 'Country'])['Total_Citations'].sum().reset_index()
+                    citation_data.columns = ['Year', 'Country', 'Total_Citations']
                     
-                    fig_trend = px.line(
-                        yearly_q1,
+                    fig_citation = px.line(
+                        citation_data,
                         x='Year',
-                        y='Q1_Ratio(%)',
-                        title='Q1 저널 비율 연도별 추이',
+                        y='Total_Citations',
+                        color='Country',
+                        title='국가별 연도별 총 피인용수',
                         markers=True
                     )
-                    fig_trend.update_traces(line_width=3, marker_size=8)
-                    st.plotly_chart(fig_trend, use_container_width=True)
-                else:
-                    st.warning("Q1 비율 트렌드 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"Q1 트렌드 차트 오류: {e}")
+                    fig_citation.update_layout(height=400)
+                    st.plotly_chart(fig_citation, use_container_width=True)
+        
+        with col4:
+            # 4. H-Index와 Avg_mrnif 시계열
+            if 'H_Index' in papers_df.columns:
+                papers_clean, valid_years = safe_get_year_data(papers_df)
+                
+                if valid_years and not papers_clean.empty:
+                    h_index_data = papers_clean[papers_clean['Country'].isin(top_countries[:5])].groupby(['Year_numeric', 'Country'])['H_Index'].mean().reset_index()
+                    h_index_data.columns = ['Year', 'Country', 'H_Index']
+                    
+                    fig_h_index = px.line(
+                        h_index_data,
+                        x='Year',
+                        y='H_Index',
+                        color='Country',
+                        title='국가별 H-Index 추이',
+                        markers=True
+                    )
+                    fig_h_index.update_layout(height=400)
+                    st.plotly_chart(fig_h_index, use_container_width=True)
+    
+    except Exception as e:
+        st.error(f"논문 질적지표 분석 오류: {e}")
 
 def render_innovation_analysis(patents_df):
     """특허 혁신 분석"""
