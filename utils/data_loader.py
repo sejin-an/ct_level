@@ -1,5 +1,5 @@
 """
-데이터 로더 및 전처리 유틸리티
+데이터 로더 및 전처리 유틸리티 (시트명 수정)
 utils/data_loader.py
 """
 
@@ -21,21 +21,19 @@ def load_data():
             excel_sheets = pd.ExcelFile(excel_file).sheet_names
             st.sidebar.info(f"발견된 시트: {', '.join(excel_sheets)}")
             
-            # 첫 번째 시트를 논문 데이터로 사용
-            papers_df = pd.read_excel(excel_file, sheet_name=0)
-            st.sidebar.success(f"논문 데이터 로드 완료: {len(papers_df):,} 행, {len(papers_df.columns)} 열")
+            # '논문' 시트 읽기
+            if '논문' in excel_sheets:
+                papers_df = pd.read_excel(excel_file, sheet_name='논문')
+                st.sidebar.success(f"논문 데이터 로드 완료: {len(papers_df):,} 행, {len(papers_df.columns)} 열")
+            else:
+                st.sidebar.warning("'논문' 시트를 찾을 수 없습니다.")
             
-            # 두 번째 시트가 있으면 특허 데이터로 사용
-            if len(excel_sheets) > 1:
-                patents_df = pd.read_excel(excel_file, sheet_name=1)
+            # '특허' 시트 읽기
+            if '특허' in excel_sheets:
+                patents_df = pd.read_excel(excel_file, sheet_name='특허')
                 st.sidebar.success(f"특허 데이터 로드 완료: {len(patents_df):,} 행, {len(patents_df.columns)} 열")
             else:
-                # 특허 관련 컬럼이 있는지 확인하여 분리
-                patent_cols = [col for col in papers_df.columns if any(keyword in col.lower() 
-                             for keyword in ['patent', 'triadic', 'claims', '특허'])]
-                if patent_cols:
-                    patents_df = papers_df[['Year', 'Country'] + patent_cols].copy()
-                    st.sidebar.info("논문 데이터에서 특허 관련 컬럼을 분리했습니다.")
+                st.sidebar.warning("'특허' 시트를 찾을 수 없습니다.")
             
         except Exception as e:
             st.sidebar.error(f"엑셀 파일 로드 실패: {e}")
@@ -43,125 +41,6 @@ def load_data():
         st.sidebar.warning(f"엑셀 파일을 찾을 수 없습니다: {excel_file}")
     
     return papers_df, patents_df
-
-def filter_data(papers_df, patents_df, sidebar):
-    """사이드바 필터 적용"""
-    
-    # 연도 범위 설정
-    min_year, max_year = get_year_range(papers_df, patents_df)
-    
-    year_range = sidebar.slider(
-        "연도 범위",
-        min_value=int(min_year),
-        max_value=int(max_year),
-        value=(int(min_year), int(max_year))
-    )
-    
-    # 국가 필터
-    available_countries = get_all_countries(papers_df, patents_df)
-    
-    if available_countries:
-        selected_countries = sidebar.multiselect(
-            "국가 선택",
-            options=['전체'] + available_countries,
-            default=['전체']
-        )
-    else:
-        selected_countries = ['전체']
-    
-    # 필터링 적용
-    filtered_papers = apply_year_filter(papers_df, year_range)
-    filtered_patents = apply_year_filter(patents_df, year_range)
-    
-    if '전체' not in selected_countries:
-        filtered_papers = apply_country_filter(filtered_papers, selected_countries)
-        filtered_patents = apply_country_filter(filtered_patents, selected_countries)
-    
-    return filtered_papers, filtered_patents
-
-def get_year_range(papers_df, patents_df):
-    """데이터에서 연도 범위 추출"""
-    min_year, max_year = 2015, 2024
-    
-    for df in [papers_df, patents_df]:
-        if df is not None and not df.empty:
-            year_col = find_year_column(df)
-            if year_col and year_col in df.columns:
-                try:
-                    # 숫자형 연도만 추출
-                    years = pd.to_numeric(df[year_col], errors='coerce').dropna()
-                    if not years.empty:
-                        df_min = int(years.min())
-                        df_max = int(years.max())
-                        min_year = min(min_year, df_min)
-                        max_year = max(max_year, df_max)
-                except (ValueError, TypeError):
-                    continue
-    
-    return min_year, max_year
-
-def get_all_countries(papers_df, patents_df):
-    """모든 데이터에서 국가 목록 추출"""
-    countries = set()
-    
-    for df in [papers_df, patents_df]:
-        if df is not None:
-            country_col = find_country_column(df)
-            if country_col:
-                countries.update(df[country_col].dropna().unique())
-    
-    return sorted(list(countries))
-
-def find_year_column(df):
-    """연도 컬럼 찾기"""
-    if df is None:
-        return None
-    
-    for col in df.columns:
-        if col.lower() in ['year', '연도', 'yr']:
-            return col
-    return None
-
-def find_country_column(df):
-    """국가 컬럼 찾기"""
-    if df is None:
-        return None
-    
-    for col in df.columns:
-        if col.lower() in ['country', '국가', 'nation', 'countries']:
-            return col
-    return None
-
-def apply_year_filter(df, year_range):
-    """연도 필터 적용"""
-    if df is None or df.empty:
-        return df
-    
-    year_col = find_year_column(df)
-    if year_col and year_col in df.columns:
-        try:
-            # 연도를 숫자로 변환
-            years = pd.to_numeric(df[year_col], errors='coerce')
-            mask = (years >= year_range[0]) & (years <= year_range[1])
-            return df[mask]
-        except Exception:
-            return df
-    
-    return df
-
-def apply_country_filter(df, selected_countries):
-    """국가 필터 적용"""
-    if df is None or df.empty:
-        return df
-    
-    country_col = find_country_column(df)
-    if country_col and country_col in df.columns:
-        try:
-            return df[df[country_col].isin(selected_countries)]
-        except Exception:
-            return df
-    
-    return df
 
 def get_summary_stats(papers_df, patents_df):
     """요약 통계 생성"""
@@ -173,23 +52,15 @@ def get_summary_stats(papers_df, patents_df):
     
     # 연도 범위 계산
     all_years = []
-    if papers_df is not None and not papers_df.empty:
-        year_col = find_year_column(papers_df)
-        if year_col and year_col in papers_df.columns:
-            # 숫자형 연도만 추출
-            years = papers_df[year_col].dropna()
-            years = pd.to_numeric(years, errors='coerce').dropna()
-            if not years.empty:
-                all_years.extend(years.tolist())
+    if papers_df is not None and not papers_df.empty and 'Year' in papers_df.columns:
+        years = pd.to_numeric(papers_df['Year'], errors='coerce').dropna()
+        if not years.empty:
+            all_years.extend(years.tolist())
     
-    if patents_df is not None and not patents_df.empty:
-        year_col = find_year_column(patents_df)
-        if year_col and year_col in patents_df.columns:
-            # 숫자형 연도만 추출
-            years = patents_df[year_col].dropna()
-            years = pd.to_numeric(years, errors='coerce').dropna()
-            if not years.empty:
-                all_years.extend(years.tolist())
+    if patents_df is not None and not patents_df.empty and 'Year' in patents_df.columns:
+        years = pd.to_numeric(patents_df['Year'], errors='coerce').dropna()
+        if not years.empty:
+            all_years.extend(years.tolist())
     
     if all_years:
         try:
@@ -198,33 +69,37 @@ def get_summary_stats(papers_df, patents_df):
             year_range = (min_year, max_year)
         except (ValueError, TypeError):
             year_range = None
-            
+    
     # 국가 수 계산
     all_countries = set()
-    if papers_df is not None and not papers_df.empty:
-        country_col = find_country_column(papers_df)
-        if country_col and country_col in papers_df.columns:
-            try:
-                countries = papers_df[country_col].dropna().unique()
-                all_countries.update(countries)
-            except Exception:
-                pass
+    if papers_df is not None and not papers_df.empty and 'Country' in papers_df.columns:
+        countries = papers_df['Country'].dropna().unique()
+        all_countries.update(countries)
     
-    if patents_df is not None and not patents_df.empty:
-        country_col = find_country_column(patents_df)
-        if country_col and country_col in patents_df.columns:
-            try:
-                countries = patents_df[country_col].dropna().unique()
-                all_countries.update(countries)
-            except Exception:
-                pass
+    if patents_df is not None and not patents_df.empty and 'Country' in patents_df.columns:
+        countries = patents_df['Country'].dropna().unique()
+        all_countries.update(countries)
     
     country_count = len(all_countries)
     
+    # 논문/특허 총계 계산
+    total_papers = 0
+    if papers_df is not None and not papers_df.empty and 'Total_Papers' in papers_df.columns:
+        total_papers = papers_df['Total_Papers'].sum()
+    
+    total_patents = 0
+    if patents_df is not None and not patents_df.empty:
+        # 특허 수 컬럼 찾기
+        patent_cols = ['Total_Papers', 'total_papers', 'Patent_Count', 'count']
+        for col in patent_cols:
+            if col in patents_df.columns:
+                total_patents = patents_df[col].sum()
+                break
+    
     return {
-        'paper_count': paper_count,
-        'patent_count': patent_count,
-        'total_count': paper_count + patent_count,
+        'paper_count': total_papers,
+        'patent_count': total_patents,
+        'total_count': total_papers + total_patents,
         'year_range': year_range,
         'country_count': country_count
     }
