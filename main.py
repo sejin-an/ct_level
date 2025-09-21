@@ -431,68 +431,98 @@ def render_country_trends_simple(papers_df, patents_df, top_n=10):
     try:
         import plotly.express as px
         
-        # 상위 국가 선택
+        # 상위 국가 선택 (논문 기준)
         top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(top_n).index.tolist()
         
         # Year 컬럼 안전 처리
         papers_clean, valid_years = safe_get_year_data(papers_df)
         
         if valid_years and not papers_clean.empty:
-            # 연도별 국가별 데이터 (피인용수 포함)
+            # 연도별 국가별 논문 데이터
             country_yearly = papers_clean[papers_clean['Country'].isin(top_countries)].groupby(['Year_numeric', 'Country']).agg({
                 'Total_Papers': 'sum',
                 'Total_Citations': 'sum' if 'Total_Citations' in papers_clean.columns else lambda x: 0
             }).reset_index()
             country_yearly.columns = ['Year', 'Country', 'Total_Papers', 'Total_Citations']
-            
-            # 연도별 순위 계산
             country_yearly['Rank'] = country_yearly.groupby('Year')['Total_Papers'].rank(method='dense', ascending=False)
             
             col1, col2 = st.columns(2)
             
             with col1:
-                # 세로형 바 차트 (애니메이션)
-                fig_bar = px.bar(
+                st.write("**📄 논문 기준**")
+                
+                # 논문 세로형 바 차트
+                fig_paper_bar = px.bar(
                     country_yearly,
                     x='Country',
                     y='Total_Papers',
                     animation_frame='Year',
-                    color='Total_Citations' if 'Total_Citations' in country_yearly.columns else 'Total_Papers',
-                    title=f'상위 {top_n}개국 연도별 논문 수',
-                    labels={'Total_Papers': '논문 수', 'Total_Citations': '피인용수'},
+                    color='Total_Citations',
+                    title='연도별 논문 수',
                     range_y=[0, country_yearly['Total_Papers'].max() * 1.1],
                     color_continuous_scale='Viridis'
                 )
+                fig_paper_bar.update_layout(height=400, xaxis_tickangle=-45, showlegend=False)
+                fig_paper_bar.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
+                st.plotly_chart(fig_paper_bar, use_container_width=True)
                 
-                fig_bar.update_layout(
-                    height=500,
-                    xaxis_tickangle=-45,
-                    showlegend=False
-                )
-                
-                # 애니메이션 속도 조정
-                fig_bar.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
-                fig_bar.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = 500
-                
-                st.plotly_chart(fig_bar, use_container_width=True)
-            
-            with col2:
-                # 연도별 순위 그래프 (정적)
-                fig_rank = px.line(
+                # 논문 순위 그래프
+                fig_paper_rank = px.line(
                     country_yearly,
                     x='Year',
                     y='Rank',
                     color='Country',
-                    title='연도별 순위 변화',
+                    title='논문 순위 변화',
                     markers=True
                 )
-                fig_rank.update_traces(line_width=2, marker_size=6)
-                fig_rank.update_layout(
-                    height=500,
-                    yaxis=dict(autorange='reversed'),  # 순위는 1이 위에 오도록
-                    legend=dict(orientation="v", yanchor="top", y=1)
-                )
-                st.plotly_chart(fig_rank, use_container_width=True)
+                fig_paper_rank.update_layout(height=400, yaxis=dict(autorange='reversed'))
+                st.plotly_chart(fig_paper_rank, use_container_width=True)
+            
+            with col2:
+                st.write("**⚖️ 특허 기준**")
+                
+                # 특허 데이터 처리
+                if patents_df is not None and not patents_df.empty:
+                    patents_clean, patent_years = safe_get_year_data(patents_df)
+                    
+                    if patent_years and not patents_clean.empty:
+                        patent_yearly = patents_clean[patents_clean['Country'].isin(top_countries)].groupby(['Year_numeric', 'Country']).agg({
+                            'Total_Papers': 'sum',
+                            'total_citations': 'sum' if 'total_citations' in patents_clean.columns else lambda x: 0
+                        }).reset_index()
+                        patent_yearly.columns = ['Year', 'Country', 'Total_Patents', 'Total_Citations']
+                        patent_yearly['Rank'] = patent_yearly.groupby('Year')['Total_Patents'].rank(method='dense', ascending=False)
+                        
+                        # 특허 세로형 바 차트
+                        fig_patent_bar = px.bar(
+                            patent_yearly,
+                            x='Country',
+                            y='Total_Patents',
+                            animation_frame='Year',
+                            color='Total_Citations',
+                            title='연도별 특허 수',
+                            range_y=[0, patent_yearly['Total_Patents'].max() * 1.1],
+                            color_continuous_scale='Oranges'
+                        )
+                        fig_patent_bar.update_layout(height=400, xaxis_tickangle=-45, showlegend=False)
+                        fig_patent_bar.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
+                        st.plotly_chart(fig_patent_bar, use_container_width=True)
+                        
+                        # 특허 순위 그래프
+                        fig_patent_rank = px.line(
+                            patent_yearly,
+                            x='Year',
+                            y='Rank',
+                            color='Country',
+                            title='특허 순위 변화',
+                            markers=True
+                        )
+                        fig_patent_rank.update_layout(height=400, yaxis=dict(autorange='reversed'))
+                        st.plotly_chart(fig_patent_rank, use_container_width=True)
+                    else:
+                        st.warning("특허 연도별 데이터가 없습니다.")
+                else:
+                    st.warning("특허 데이터가 없습니다.")
             
             # 국가별 요약 통계
             st.subheader("📊 상위 국가 요약 통계")
