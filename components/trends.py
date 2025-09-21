@@ -39,26 +39,282 @@ def safe_get_numeric_column(df, keywords):
     return None
 
 def render_smart_timeseries(papers_df, patents_df):
-    """스마트 시계열 분석 - 데이터 구조에 따라 자동 차트 선택"""
-    st.subheader("📈 스마트 시계열 분석")
+    """스마트 시계열 분석 - 세로 레이아웃으로 변경"""
+    st.subheader("📈 시계열 분석")
     
-    from utils.data_loader import detect_data_structure
+    # 논문 시계열 (Total_Papers 우선)
+    if papers_df is not None and not papers_df.empty:
+        render_paper_timeseries_vertical(papers_df)
+        st.markdown("---")
     
-    paper_structure = detect_data_structure(papers_df) if papers_df is not None else None
-    patent_structure = detect_data_structure(patents_df) if patents_df is not None else None
+    # 특허 시계열
+    if patents_df is not None and not patents_df.empty:
+        render_patent_timeseries_vertical(patents_df)
+        st.markdown("---")
     
-    # 통합 시계열 (둘 다 시계열 데이터가 있는 경우)
-    if (paper_structure and paper_structure['has_timeseries'] and 
-        patent_structure and patent_structure['has_timeseries']):
-        render_integrated_timeseries(papers_df, patents_df, paper_structure, patent_structure)
-    
-    # 개별 시계열
-    elif paper_structure and paper_structure['has_timeseries']:
-        render_single_timeseries_smart(papers_df, paper_structure, "논문")
-    elif patent_structure and patent_structure['has_timeseries']:
-        render_single_timeseries_smart(patents_df, patent_structure, "특허")
-    else:
-        st.warning("시계열 데이터가 없습니다.")
+    # 통합 비교 (둘 다 있는 경우)
+    if (papers_df is not None and not papers_df.empty and 
+        patents_df is not None and not patents_df.empty):
+        render_integrated_comparison_vertical(papers_df, patents_df)
+
+def render_paper_timeseries_vertical(papers_df):
+    """논문 시계열 (Total_Papers 우선)"""
+    try:
+        # 연도 컬럼 찾기
+        year_col = None
+        for col in papers_df.columns:
+            if col.lower() in ['year', '연도']:
+                year_col = col
+                break
+        
+        if not year_col:
+            st.warning("연도 컬럼을 찾을 수 없습니다.")
+            return
+        
+        # Total_Papers 우선, 없으면 다른 수치 컬럼
+        paper_col = None
+        if 'Total_Papers' in papers_df.columns:
+            paper_col = 'Total_Papers'
+        elif 'total_papers' in papers_df.columns:
+            paper_col = 'total_papers'
+        else:
+            # 다른 수치 컬럼 찾기
+            for col in papers_df.columns:
+                if papers_df[col].dtype in ['int64', 'float64'] and col.lower() not in ['year', '연도', 'label_m', 'label_s']:
+                    paper_col = col
+                    break
+        
+        if not paper_col:
+            # 단순 개수 집계
+            yearly_data = papers_df.groupby(year_col).size().reset_index(name='Count')
+            paper_col = 'Count'
+        else:
+            # 합계 집계
+            yearly_data = papers_df.groupby(year_col)[paper_col].sum().reset_index()
+        
+        yearly_data = yearly_data.sort_values(year_col)
+        
+        # 차트 생성
+        fig = px.line(
+            yearly_data, 
+            x=year_col, 
+            y=paper_col,
+            title='📄 논문 수 연도별 추이',
+            markers=True
+        )
+        fig.update_traces(line_width=3, marker_size=8, line_color='#2E86AB')
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 성장률 메트릭
+        if len(yearly_data) > 1:
+            latest_count = yearly_data[paper_col].iloc[-1]
+            previous_count = yearly_data[paper_col].iloc[-2]
+            growth_rate = ((latest_count - previous_count) / previous_count) * 100
+            avg_growth = yearly_data[paper_col].pct_change().mean() * 100
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 최근 논문 수", f"{latest_count:,}")
+            with col2:
+                st.metric("📈 전년 대비", f"{growth_rate:+.1f}%")
+            with col3:
+                st.metric("📊 평균 성장률", f"{avg_growth:.1f}%")
+            
+    except Exception as e:
+        st.error(f"논문 시계열 분석 오류: {e}")
+
+def render_patent_timeseries_vertical(patents_df):
+    """특허 시계열"""
+    try:
+        # 연도 컬럼 찾기
+        year_col = None
+        for col in patents_df.columns:
+            if col.lower() in ['year', '연도']:
+                year_col = col
+                break
+        
+        if not year_col:
+            st.warning("특허 데이터에 연도 컬럼이 없습니다.")
+            return
+        
+        # 특허 수 컬럼 찾기
+        patent_col = None
+        for col in patents_df.columns:
+            if any(keyword in col.lower() for keyword in ['patent', 'count', '특허']):
+                patent_col = col
+                break
+        
+        if not patent_col:
+            # 다른 수치 컬럼 찾기
+            for col in patents_df.columns:
+                if patents_df[col].dtype in ['int64', 'float64'] and col.lower() not in ['year', '연도', 'label_m', 'label_s']:
+                    patent_col = col
+                    break
+        
+        if not patent_col:
+            # 단순 개수 집계
+            yearly_data = patents_df.groupby(year_col).size().reset_index(name='Count')
+            patent_col = 'Count'
+        else:
+            # 합계 집계
+            yearly_data = patents_df.groupby(year_col)[patent_col].sum().reset_index()
+        
+        yearly_data = yearly_data.sort_values(year_col)
+        
+        # 차트 생성
+        fig = px.line(
+            yearly_data, 
+            x=year_col, 
+            y=patent_col,
+            title='⚖️ 특허 수 연도별 추이',
+            markers=True
+        )
+        fig.update_traces(line_width=3, marker_size=8, line_color='#A23B72')
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 성장률 메트릭
+        if len(yearly_data) > 1:
+            latest_count = yearly_data[patent_col].iloc[-1]
+            previous_count = yearly_data[patent_col].iloc[-2]
+            growth_rate = ((latest_count - previous_count) / previous_count) * 100
+            avg_growth = yearly_data[patent_col].pct_change().mean() * 100
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 최근 특허 수", f"{latest_count:,}")
+            with col2:
+                st.metric("📈 전년 대비", f"{growth_rate:+.1f}%")
+            with col3:
+                st.metric("📊 평균 성장률", f"{avg_growth:.1f}%")
+            
+    except Exception as e:
+        st.error(f"특허 시계열 분석 오류: {e}")
+
+def render_integrated_comparison_vertical(papers_df, patents_df):
+    """통합 비교 차트"""
+    try:
+        st.subheader("🔄 논문 vs 특허 통합 비교")
+        
+        # 논문 데이터 처리
+        paper_year_col = None
+        for col in papers_df.columns:
+            if col.lower() in ['year', '연도']:
+                paper_year_col = col
+                break
+        
+        paper_col = None
+        if 'Total_Papers' in papers_df.columns:
+            paper_col = 'Total_Papers'
+        else:
+            for col in papers_df.columns:
+                if papers_df[col].dtype in ['int64', 'float64'] and col.lower() not in ['year', '연도', 'label_m', 'label_s']:
+                    paper_col = col
+                    break
+        
+        # 특허 데이터 처리
+        patent_year_col = None
+        for col in patents_df.columns:
+            if col.lower() in ['year', '연도']:
+                patent_year_col = col
+                break
+        
+        patent_col = None
+        for col in patents_df.columns:
+            if any(keyword in col.lower() for keyword in ['patent', 'count', '특허']):
+                patent_col = col
+                break
+        
+        if not paper_year_col or not patent_year_col:
+            st.warning("연도 컬럼을 찾을 수 없습니다.")
+            return
+        
+        # 연도별 집계
+        if paper_col:
+            paper_yearly = papers_df.groupby(paper_year_col)[paper_col].sum().reset_index()
+        else:
+            paper_yearly = papers_df.groupby(paper_year_col).size().reset_index(name='Count')
+            paper_col = 'Count'
+        
+        if patent_col:
+            patent_yearly = patents_df.groupby(patent_year_col)[patent_col].sum().reset_index()
+        else:
+            patent_yearly = patents_df.groupby(patent_year_col).size().reset_index(name='Count')
+            patent_col = 'Count'
+        
+        # 이중축 차트
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        fig.add_trace(
+            go.Scatter(
+                x=paper_yearly[paper_year_col],
+                y=paper_yearly[paper_col],
+                mode='lines+markers',
+                name='논문',
+                line=dict(color='#2E86AB', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=False,
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=patent_yearly[patent_year_col],
+                y=patent_yearly[patent_col],
+                mode='lines+markers',
+                name='특허',
+                line=dict(color='#A23B72', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=True,
+        )
+        
+        fig.update_xaxes(title_text="연도")
+        fig.update_yaxes(title_text="논문 수", secondary_y=False, titlefont=dict(color='#2E86AB'))
+        fig.update_yaxes(title_text="특허 수", secondary_y=True, titlefont=dict(color='#A23B72'))
+        fig.update_layout(title="📈 논문 vs 특허 통합 추이", height=500)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 상관관계 분석
+        render_correlation_analysis(paper_yearly, patent_yearly, paper_year_col, patent_year_col, paper_col, patent_col)
+        
+    except Exception as e:
+        st.error(f"통합 비교 분석 오류: {e}")
+
+def render_correlation_analysis(paper_data, patent_data, paper_year_col, patent_year_col, paper_col, patent_col):
+    """상관관계 분석"""
+    try:
+        # 공통 연도 찾기
+        common_years = set(paper_data[paper_year_col]) & set(patent_data[patent_year_col])
+        
+        if len(common_years) >= 3:
+            # 공통 연도 데이터 추출
+            paper_common = paper_data[paper_data[paper_year_col].isin(common_years)].sort_values(paper_year_col)
+            patent_common = patent_data[patent_data[patent_year_col].isin(common_years)].sort_values(patent_year_col)
+            
+            if len(paper_common) == len(patent_common):
+                # 상관계수 계산
+                correlation = np.corrcoef(paper_common[paper_col], patent_common[patent_col])[0, 1]
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📊 상관계수", f"{correlation:.3f}")
+                with col2:
+                    if abs(correlation) > 0.7:
+                        st.success("🔗 강한 상관관계")
+                    elif abs(correlation) > 0.4:
+                        st.warning("🔗 중간 상관관계")
+                    else:
+                        st.info("🔗 약한 상관관계")
+                with col3:
+                    st.metric("📈 분석 기간", f"{len(common_years)}년")
+        else:
+            st.info("상관관계 분석을 위한 충분한 데이터가 없습니다.")
+                    
+    except Exception as e:
+        st.warning(f"상관관계 분석 중 오류: {e}")
 
 def render_integrated_timeseries(papers_df, patents_df, paper_structure, patent_structure):
     """통합 시계열 차트"""
