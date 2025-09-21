@@ -555,7 +555,12 @@ def main():
     render_summary_metrics(summary_stats)
     st.markdown("---")
     
-    # 2. 연구 품질 & 혁신 분석
+    # 2. 기본 트렌드 분석 (기존 컴포넌트 사용)
+    if IMPORTS_SUCCESSFUL:
+        render_basic_timeseries(filtered_papers, filtered_patents)
+        st.markdown("---")
+    
+    # 3. 연구 품질 & 혁신 분석
     col1, col2 = st.columns(2)
     with col1:
         render_research_quality_analysis(filtered_papers)
@@ -563,11 +568,6 @@ def main():
         render_innovation_analysis(filtered_patents)
     
     st.markdown("---")
-    
-    # 3. 기본 트렌드 분석 (기존 컴포넌트 사용)
-    if IMPORTS_SUCCESSFUL:
-        render_basic_timeseries(filtered_papers, filtered_patents)
-        st.markdown("---")
     
     # 4. 국가별 비교
     render_country_comparison(filtered_papers, filtered_patents)
