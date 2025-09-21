@@ -7,6 +7,82 @@ import streamlit as st
 import pandas as pd
 import os
 
+def detect_data_structure(df):
+    """데이터 구조 자동 감지"""
+    if df is None or df.empty:
+        return {'type': 'empty', 'has_timeseries': False, 'has_country': False}
+    
+    # 시계열 컬럼 감지
+    time_columns = [col for col in df.columns if col.lower() in ['year', '연도', 'date', '날짜']]
+    
+    # 국가 컬럼 감지
+    country_columns = [col for col in df.columns if col.lower() in ['country', '국가', 'nation']]
+    
+    # label 컬럼 감지 (label_m, label_s)
+    label_columns = [col for col in df.columns if 'label' in col.lower() or '분류' in col.lower()]
+    
+    # 수치형 데이터 컬럼 감지
+    numeric_columns = [col for col in df.columns 
+                      if df[col].dtype in ['int64', 'float64'] and col not in time_columns]
+    
+    return {
+        'type': 'structured',
+        'has_timeseries': len(time_columns) > 0,
+        'has_country': len(country_columns) > 0,
+        'has_labels': len(label_columns) > 0,
+        'time_columns': time_columns,
+        'country_columns': country_columns,
+        'label_columns': label_columns,
+        'numeric_columns': numeric_columns
+    }
+
+def get_available_filters(papers_df, patents_df):
+    """사용 가능한 필터 옵션 반환"""
+    filters = {}
+    
+    # 연도 필터
+    all_years = []
+    for df in [papers_df, patents_df]:
+        if df is not None and not df.empty:
+            structure = detect_data_structure(df)
+            if structure['has_timeseries']:
+                year_col = structure['time_columns'][0]
+                years = pd.to_numeric(df[year_col], errors='coerce').dropna()
+                all_years.extend(years.tolist())
+    
+    if all_years:
+        filters['year_range'] = (int(min(all_years)), int(max(all_years)))
+    
+    # 국가 필터
+    all_countries = set()
+    for df in [papers_df, patents_df]:
+        if df is not None and not df.empty:
+            structure = detect_data_structure(df)
+            if structure['has_country']:
+                country_col = structure['country_columns'][0]
+                countries = df[country_col].dropna().unique()
+                all_countries.update(countries)
+    
+    filters['countries'] = sorted(list(all_countries))
+    
+    # 라벨 필터 (label_m 우선)
+    all_labels = set()
+    for df in [papers_df, patents_df]:
+        if df is not None and not df.empty:
+            if 'label_m' in df.columns:
+                labels = df['label_m'].dropna().unique()
+                all_labels.update(labels)
+            else:
+                structure = detect_data_structure(df)
+                if structure['has_labels']:
+                    label_col = structure['label_columns'][0]
+                    labels = df[label_col].dropna().unique()
+                    all_labels.update(labels)
+    
+    filters['labels'] = sorted(list(all_labels))
+    
+    return filters
+
 @st.cache_data
 def load_data():
     """엑셀 파일에서 데이터 로드"""
@@ -267,6 +343,7 @@ class DataLoader:
                 year_range = (min_year, max_year)
             except (ValueError, TypeError):
                 year_range = None
+        
         # 국가 수 계산
         all_countries = set()
         if papers_df is not None and not papers_df.empty:
