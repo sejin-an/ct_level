@@ -1,345 +1,530 @@
 """
-Ultra Simple 버전 - 에러 방지 극대화
+기술수준조사 서지분석 대시보드 - 4개 모듈 구조
+main.py
 """
 
 import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
+import sys
+import os
 import warnings
+import pandas as pd
 warnings.filterwarnings('ignore')
+
+# 현재 디렉토리를 Python 경로에 추가
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # 페이지 설정
 st.set_page_config(
-    page_title="기술수준조사 대시보드",
+    page_title="기술수준조사 서지분석 대시보드",
     page_icon="📈",
     layout="wide"
 )
 
-def create_safe_sample_data():
-    """완전히 안전한 샘플 데이터 생성"""
-    try:
-        countries = ['미국', '중국', '독일', '일본', '한국', '영국', '프랑스', '캐나다', '이탈리아', '호주']
-        years = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
-        
-        # 논문 데이터
-        paper_data = []
-        for country in countries:
-            for year in years:
-                paper_data.append({
-                    'Year': year,
-                    'Country': country,
-                    'Total_Papers': np.random.randint(100, 1000),
-                    'H_Index': np.random.randint(10, 50),
-                    'Q1_Ratio': np.random.uniform(20, 80),
-                    'Citations': np.random.uniform(5, 25)
-                })
-        
-        # 특허 데이터
-        patent_data = []
-        for country in countries:
-            for year in years:
-                patent_data.append({
-                    'Year': year,
-                    'Country': country,
-                    'Patent_Count': np.random.randint(50, 500),
-                    'Triadic_Ratio': np.random.uniform(0.1, 0.8),
-                    'Claims': np.random.uniform(10, 30)
-                })
-        
-        papers_df = pd.DataFrame(paper_data)
-        patents_df = pd.DataFrame(patent_data)
-        
-        return papers_df, patents_df
-        
-    except Exception as e:
-        st.error(f"샘플 데이터 생성 오류: {e}")
-        # 최소한의 데이터라도 반환
-        return pd.DataFrame({'Year': [2024], 'Country': ['한국'], 'Total_Papers': [100]}), pd.DataFrame({'Year': [2024], 'Country': ['한국'], 'Patent_Count': [50]})
+# 컴포넌트 import
+try:
+    from utils.data_loader import load_data, filter_data
+    from components.metrics import (
+        render_summary_metrics, 
+        render_yearly_metrics, 
+        render_top_countries_metrics,
+        render_comparison_gauge,
+        render_data_quality_metrics
+    )
+    from components.trends import (
+        render_basic_timeseries,
+        render_combined_timeseries,
+        render_cumulative_trends,
+        render_growth_rate_analysis,
+        render_trend_comparison,
+        render_forecast_trend
+    )
+    from components.country import (
+        render_country_trends,
+        render_country_detail_analysis,
+        render_country_comparison_matrix,
+        render_country_ranking,
+        render_country_growth_analysis,
+        render_regional_analysis
+    )
+    IMPORTS_SUCCESSFUL = True
+except ImportError as e:
+    st.error(f"모듈 import 오류: {e}")
+    st.info("다음 파일들이 올바른 위치에 있는지 확인하세요:")
+    st.code("""
+    utils/data_loader.py
+    components/metrics.py
+    components/trends.py
+    components/country.py
+    """)
+    IMPORTS_SUCCESSFUL = False
 
-def safe_render_metrics(papers_df, patents_df):
-    """안전한 메트릭 렌더링"""
-    try:
-        st.subheader("📊 기본 통계")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            paper_count = len(papers_df) if papers_df is not None else 0
-            st.metric("📄 논문 수", f"{paper_count:,}")
-        
-        with col2:
-            patent_count = len(patents_df) if patents_df is not None else 0
-            st.metric("⚖️ 특허 수", f"{patent_count:,}")
-        
-        with col3:
-            if papers_df is not None and 'Year' in papers_df.columns:
-                years = papers_df['Year'].dropna()
+def create_sample_data():
+    """샘플 데이터 생성 (테스트용)"""
+    import numpy as np
+    
+    # 샘플 논문 데이터
+    countries = ['미국', '중국', '독일', '일본', '한국', '영국', '프랑스', '캐나다', '이탈리아', '호주']
+    years = list(range(2018, 2025))
+    
+    paper_data = []
+    for country in countries:
+        for year in years:
+            paper_data.append({
+                'Year': year,
+                'Country': country,
+                'Total_Papers': np.random.randint(100, 1000),
+                'H_Index': np.random.randint(10, 50),
+                'Q1_Ratio(%)': np.random.uniform(20, 80),
+                'Collaboration_Ratio(%)': np.random.uniform(30, 70),
+                'Avg_Citations': np.random.uniform(5, 25),
+                'Avg_mrnif': np.random.uniform(0.8, 2.5)
+            })
+    
+    # 샘플 특허 데이터
+    patent_data = []
+    for country in countries:
+        for year in years:
+            patent_data.append({
+                'Year': year,
+                'Country': country,
+                'patent_count': np.random.randint(50, 500),
+                'triadic_ratio': np.random.uniform(0.1, 0.8),
+                'claims_per_patent': np.random.uniform(10, 30),
+                'foreign_filing_intensity': np.random.uniform(0.2, 0.9),
+                'h_index': np.random.randint(5, 25)
+            })
+    
+    papers_df = pd.DataFrame(paper_data)
+    patents_df = pd.DataFrame(patent_data)
+    
+    return papers_df, patents_df
+
+def get_summary_stats(papers_df, patents_df):
+    """요약 통계 생성"""
+    paper_count = len(papers_df) if papers_df is not None and not papers_df.empty else 0
+    patent_count = len(patents_df) if patents_df is not None and not patents_df.empty else 0
+    
+    year_range = None
+    country_count = 0
+    
+    # 연도 범위 계산
+    all_years = []
+    for df in [papers_df, patents_df]:
+        if df is not None and not df.empty and 'Year' in df.columns:
+            try:
+                years = pd.to_numeric(df['Year'], errors='coerce').dropna()
                 if not years.empty:
-                    year_range = f"{int(years.min())}-{int(years.max())}"
-                    st.metric("📅 연도 범위", year_range)
-                else:
-                    st.metric("📅 연도 범위", "N/A")
-            else:
-                st.metric("📅 연도 범위", "N/A")
-        
-        with col4:
-            if papers_df is not None and 'Country' in papers_df.columns:
-                countries = papers_df['Country'].dropna().nunique()
-                st.metric("🌍 국가 수", f"{countries}")
-            else:
-                st.metric("🌍 국가 수", "0")
+                    all_years.extend(years.tolist())
+            except Exception:
+                continue
     
-    except Exception as e:
-        st.error(f"메트릭 렌더링 오류: {e}")
-
-def safe_render_basic_charts(papers_df, patents_df):
-    """안전한 기본 차트 렌더링"""
-    try:
-        st.subheader("📈 기본 차트")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if papers_df is not None and 'Year' in papers_df.columns:
-                try:
-                    # 연도별 논문 수
-                    if 'Total_Papers' in papers_df.columns:
-                        yearly_papers = papers_df.groupby('Year')['Total_Papers'].sum().reset_index()
-                    else:
-                        yearly_papers = papers_df.groupby('Year').size().reset_index(name='Count')
-                        yearly_papers.columns = ['Year', 'Total_Papers']
-                    
-                    fig = px.line(yearly_papers, x='Year', y='Total_Papers', 
-                                 title='연도별 논문 수', markers=True)
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"논문 차트 오류: {e}")
-        
-        with col2:
-            if patents_df is not None and 'Year' in patents_df.columns:
-                try:
-                    # 연도별 특허 수
-                    if 'Patent_Count' in patents_df.columns:
-                        yearly_patents = patents_df.groupby('Year')['Patent_Count'].sum().reset_index()
-                    else:
-                        yearly_patents = patents_df.groupby('Year').size().reset_index(name='Count')
-                        yearly_patents.columns = ['Year', 'Patent_Count']
-                    
-                    fig = px.line(yearly_patents, x='Year', y='Patent_Count', 
-                                 title='연도별 특허 수', markers=True,
-                                 color_discrete_sequence=['#FF6B6B'])
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"특허 차트 오류: {e}")
-    
-    except Exception as e:
-        st.error(f"차트 렌더링 오류: {e}")
-
-def safe_render_country_analysis(papers_df, patents_df):
-    """안전한 국가별 분석"""
-    try:
-        st.subheader("🌍 국가별 분석")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if papers_df is not None and 'Country' in papers_df.columns:
-                try:
-                    # 국가별 논문 수
-                    if 'Total_Papers' in papers_df.columns:
-                        country_papers = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(10)
-                    else:
-                        country_papers = papers_df['Country'].value_counts().head(10)
-                    
-                    fig = px.bar(x=country_papers.index, y=country_papers.values,
-                                title='상위 10개국 논문 수')
-                    fig.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"국가별 논문 차트 오류: {e}")
-        
-        with col2:
-            if patents_df is not None and 'Country' in patents_df.columns:
-                try:
-                    # 국가별 특허 수
-                    if 'Patent_Count' in patents_df.columns:
-                        country_patents = patents_df.groupby('Country')['Patent_Count'].sum().nlargest(10)
-                    else:
-                        country_patents = patents_df['Country'].value_counts().head(10)
-                    
-                    fig = px.bar(x=country_patents.index, y=country_patents.values,
-                                title='상위 10개국 특허 수',
-                                color_discrete_sequence=['#FF6B6B'])
-                    fig.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"국가별 특허 차트 오류: {e}")
-    
-    except Exception as e:
-        st.error(f"국가별 분석 오류: {e}")
-
-def safe_render_sidebar(papers_df, patents_df):
-    """완전히 안전한 사이드바"""
-    try:
-        st.sidebar.title("🔧 설정")
-        
-        # 연도 범위 - 안전한 기본값 사용
-        year_min, year_max = 2018, 2024
-        
+    if all_years:
         try:
-            if papers_df is not None and 'Year' in papers_df.columns:
-                years = pd.to_numeric(papers_df['Year'], errors='coerce').dropna()
-                if not years.empty:
-                    year_min = max(int(years.min()), 2010)  # 최소값 제한
-                    year_max = min(int(years.max()), 2030)  # 최대값 제한
-        except:
-            pass  # 기본값 유지
-        
-        year_range = st.sidebar.slider(
-            "연도 범위",
-            min_value=year_min,
-            max_value=year_max,
-            value=(year_min, year_max)
-        )
-        
-        # 국가 선택 - 안전한 방식
-        countries = []
-        try:
-            if papers_df is not None and 'Country' in papers_df.columns:
-                countries.extend(papers_df['Country'].dropna().unique().tolist())
-            if patents_df is not None and 'Country' in patents_df.columns:
-                countries.extend(patents_df['Country'].dropna().unique().tolist())
-            countries = sorted(list(set(countries)))
-        except:
-            countries = ['한국', '미국', '중국', '일본', '독일']  # 기본 국가
-        
-        selected_countries = st.sidebar.multiselect(
-            "국가 선택",
-            options=countries,
-            default=countries[:5] if len(countries) >= 5 else countries
-        )
-        
-        return year_range, selected_countries
-        
-    except Exception as e:
-        st.sidebar.error(f"사이드바 오류: {e}")
-        return (2018, 2024), ['한국', '미국', '중국']
+            year_range = (int(min(all_years)), int(max(all_years)))
+        except (ValueError, TypeError):
+            year_range = None
+    
+    # 국가 수 계산
+    all_countries = set()
+    for df in [papers_df, patents_df]:
+        if df is not None and not df.empty and 'Country' in df.columns:
+            try:
+                countries = df['Country'].dropna().unique()
+                all_countries.update(countries)
+            except Exception:
+                continue
+    
+    country_count = len(all_countries)
+    
+    return {
+        'paper_count': paper_count,
+        'patent_count': patent_count,
+        'total_count': paper_count + patent_count,
+        'year_range': year_range,
+        'country_count': country_count
+    }
 
-def safe_filter_data(papers_df, patents_df, year_range, selected_countries):
-    """완전히 안전한 데이터 필터링"""
-    filtered_papers = papers_df
-    filtered_patents = patents_df
+def render_sidebar_controls(papers_df, patents_df):
+    """사이드바 컨트롤 렌더링"""
+    st.sidebar.title("⚙️ 대시보드 설정")
+    
+    # 1. 데이터 소스 선택
+    st.sidebar.subheader("📊 데이터 소스")
+    data_source = st.sidebar.selectbox(
+        "데이터 소스 선택",
+        ["엑셀 파일", "샘플 데이터"],
+        index=1,
+        help="분석할 데이터 소스를 선택하세요"
+    )
+    
+    # 2. 연도 범위 설정
+    year_min, year_max = 2020, 2024  # 기본값 설정
     
     try:
-        # 논문 데이터 필터링
+        all_years = []
+        
+        # 논문 데이터에서 연도 추출
+        if papers_df is not None and not papers_df.empty and 'Year' in papers_df.columns:
+            paper_years = pd.to_numeric(papers_df['Year'], errors='coerce').dropna()
+            if not paper_years.empty:
+                all_years.extend(paper_years.tolist())
+        
+        # 특허 데이터에서 연도 추출
+        if patents_df is not None and not patents_df.empty and 'Year' in patents_df.columns:
+            patent_years = pd.to_numeric(patents_df['Year'], errors='coerce').dropna()
+            if not patent_years.empty:
+                all_years.extend(patent_years.tolist())
+        
+        # 연도 범위 계산
+        if all_years:
+            year_min = int(min(all_years))
+            year_max = int(max(all_years))
+        
+    except Exception as e:
+        # 에러 발생 시 기본값 사용
+        st.sidebar.warning(f"연도 범위 계산 중 오류: {e}")
+        year_min, year_max = 2020, 2024
+    
+    st.sidebar.subheader("📅 연도 필터")
+    year_range = st.sidebar.slider(
+        "분석 연도 범위",
+        min_value=year_min,
+        max_value=year_max,
+        value=(year_min, year_max),
+        help="분석할 연도 범위를 선택하세요"
+    )
+    
+    # 3. 국가 선택
+    available_countries = []
+    
+    try:
+        # 논문 데이터에서 국가 추출
+        if papers_df is not None and not papers_df.empty and 'Country' in papers_df.columns:
+            paper_countries = papers_df['Country'].dropna().unique().tolist()
+            available_countries.extend(paper_countries)
+        
+        # 특허 데이터에서 국가 추출
+        if patents_df is not None and not patents_df.empty and 'Country' in patents_df.columns:
+            patent_countries = patents_df['Country'].dropna().unique().tolist()
+            available_countries.extend(patent_countries)
+        
+        # 중복 제거 및 정렬
+        available_countries = sorted(list(set(available_countries)))
+        
+    except Exception as e:
+        st.sidebar.warning(f"국가 목록 생성 중 오류: {e}")
+        available_countries = []
+    
+    if available_countries:
+        st.sidebar.subheader("🌍 국가 필터")
+        
+        # 전체 선택/해제 버튼
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            select_all = st.button("전체 선택", key="select_all")
+        with col2:
+            select_none = st.button("전체 해제", key="select_none")
+        
+        # 기본 선택 국가 (상위 10개)
+        default_countries = available_countries[:10] if len(available_countries) >= 10 else available_countries
+        
+        if select_all:
+            selected_countries = available_countries
+        elif select_none:
+            selected_countries = []
+        else:
+            selected_countries = st.sidebar.multiselect(
+                "분석 대상 국가",
+                options=available_countries,
+                default=default_countries,
+                help="분석할 국가를 선택하세요 (최대 20개 권장)"
+            )
+    else:
+        selected_countries = []
+        st.sidebar.info("선택 가능한 국가가 없습니다.")
+    
+    # 4. 분석 모드 선택
+    st.sidebar.subheader("🔍 분석 모드")
+    analysis_mode = st.sidebar.selectbox(
+        "분석 유형",
+        ["📊 전체 대시보드", "📈 트렌드 분석", "🌍 국가별 분석", "📋 상세 분석"],
+        index=0,
+        help="원하는 분석 유형을 선택하세요"
+    )
+    
+    return {
+        'data_source': data_source,
+        'year_range': year_range,
+        'selected_countries': selected_countries,
+        'analysis_mode': analysis_mode
+    }
+
+def filter_data_by_controls(papers_df, patents_df, controls):
+    """컨트롤에 따라 데이터 필터링"""
+    filtered_papers = None
+    filtered_patents = None
+    
+    # 논문 데이터 필터링
+    try:
         if papers_df is not None and not papers_df.empty:
             filtered_papers = papers_df.copy()
             
-            # 연도 필터
-            if 'Year' in filtered_papers.columns:
+            # 연도 필터링
+            if controls['year_range'] and 'Year' in filtered_papers.columns:
                 years = pd.to_numeric(filtered_papers['Year'], errors='coerce')
-                mask = (years >= year_range[0]) & (years <= year_range[1])
-                mask = mask.fillna(False)
+                mask = (years >= controls['year_range'][0]) & (years <= controls['year_range'][1])
+                mask = mask.fillna(False)  # NaN 값 처리
                 filtered_papers = filtered_papers[mask]
             
-            # 국가 필터
-            if selected_countries and 'Country' in filtered_papers.columns:
-                filtered_papers = filtered_papers[filtered_papers['Country'].isin(selected_countries)]
+            # 국가 필터링
+            if controls['selected_countries'] and 'Country' in filtered_papers.columns:
+                filtered_papers = filtered_papers[filtered_papers['Country'].isin(controls['selected_countries'])]
+                
     except Exception as e:
-        st.warning(f"논문 데이터 필터링 오류: {e}")
+        st.warning(f"논문 데이터 필터링 중 오류: {e}")
+        filtered_papers = papers_df.copy() if papers_df is not None else None
     
+    # 특허 데이터 필터링
     try:
-        # 특허 데이터 필터링
         if patents_df is not None and not patents_df.empty:
             filtered_patents = patents_df.copy()
             
-            # 연도 필터
-            if 'Year' in filtered_patents.columns:
+            # 연도 필터링
+            if controls['year_range'] and 'Year' in filtered_patents.columns:
                 years = pd.to_numeric(filtered_patents['Year'], errors='coerce')
-                mask = (years >= year_range[0]) & (years <= year_range[1])
-                mask = mask.fillna(False)
+                mask = (years >= controls['year_range'][0]) & (years <= controls['year_range'][1])
+                mask = mask.fillna(False)  # NaN 값 처리
                 filtered_patents = filtered_patents[mask]
             
-            # 국가 필터
-            if selected_countries and 'Country' in filtered_patents.columns:
-                filtered_patents = filtered_patents[filtered_patents['Country'].isin(selected_countries)]
+            # 국가 필터링
+            if controls['selected_countries'] and 'Country' in filtered_patents.columns:
+                filtered_patents = filtered_patents[filtered_patents['Country'].isin(controls['selected_countries'])]
+                
     except Exception as e:
-        st.warning(f"특허 데이터 필터링 오류: {e}")
+        st.warning(f"특허 데이터 필터링 중 오류: {e}")
+        filtered_patents = patents_df.copy() if patents_df is not None else None
     
     return filtered_papers, filtered_patents
 
 def main():
     # 제목
-    st.title("📈 기술수준조사 대시보드")
-    st.caption("Ultra Simple 버전 - 최대 안정성")
+    st.title("📈 기술수준조사 시계열 대시보드")
+    st.caption("논문 및 특허 데이터의 시계열 분석 전문 대시보드")
     st.markdown("---")
     
-    # 데이터 생성
+    # 데이터 로드
     try:
-        with st.spinner("데이터 생성 중..."):
-            papers_df, patents_df = create_safe_sample_data()
+        if IMPORTS_SUCCESSFUL:
+            # 실제 데이터 로드 시도
+            papers_df, patents_df = load_data()
+        else:
+            papers_df, patents_df = None, None
+    except Exception as e:
+        st.warning(f"데이터 로드 중 오류: {e}")
+        papers_df, patents_df = None, None
+    
+    # 데이터가 없거나 비어있으면 샘플 데이터 사용
+    if (papers_df is None or papers_df.empty) and (patents_df is None or patents_df.empty):
+        st.info("📋 실제 데이터를 찾을 수 없어 샘플 데이터를 사용합니다.")
+        papers_df, patents_df = create_sample_data()
+    
+    # 사이드바 컨트롤
+    controls = render_sidebar_controls(papers_df, patents_df)
+    
+    # 데이터 필터링
+    filtered_papers, filtered_patents = filter_data_by_controls(papers_df, patents_df, controls)
+    
+    # 필터링 후 요약 정보
+    summary = get_summary_stats(filtered_papers, filtered_patents)
+    
+    # 메인 콘텐츠 렌더링
+    analysis_mode = controls['analysis_mode']
+    
+    if analysis_mode == "📊 전체 대시보드":
+        render_full_dashboard(filtered_papers, filtered_patents, summary, controls)
         
-        st.success("✅ 데이터 로드 완료!")
+    elif analysis_mode == "📈 트렌드 분석":
+        render_trend_dashboard(filtered_papers, filtered_patents)
         
-        # 사이드바 설정
-        year_range, selected_countries = safe_render_sidebar(papers_df, patents_df)
+    elif analysis_mode == "🌍 국가별 분석":
+        render_country_dashboard(filtered_papers, filtered_patents, controls)
         
-        # 데이터 필터링
-        filtered_papers, filtered_patents = safe_filter_data(
-            papers_df, patents_df, year_range, selected_countries
+    else:  # 상세 분석
+        render_detailed_dashboard(filtered_papers, filtered_patents, summary)
+    
+    # 사이드바 요약 정보
+    render_sidebar_summary(summary, controls)
+
+def render_full_dashboard(papers_df, patents_df, summary, controls):
+    """전체 대시보드 렌더링"""
+    if IMPORTS_SUCCESSFUL:
+        # 1. 요약 메트릭
+        render_summary_metrics(summary)
+        st.markdown("---")
+        
+        # 2. 연도별 메트릭
+        render_yearly_metrics(papers_df, patents_df)
+        st.markdown("---")
+        
+        # 3. 기본 시계열
+        render_basic_timeseries(papers_df, patents_df)
+        st.markdown("---")
+        
+        # 4. 상위 국가 정보
+        render_top_countries_metrics(papers_df, top_n=5)
+        st.markdown("---")
+        
+        # 5. 비교 게이지
+        render_comparison_gauge(papers_df, patents_df)
+    else:
+        st.error("컴포넌트를 로드할 수 없어 대시보드를 표시할 수 없습니다.")
+
+def render_trend_dashboard(papers_df, patents_df):
+    """트렌드 분석 대시보드"""
+    st.header("📈 시계열 트렌드 분석")
+    
+    if IMPORTS_SUCCESSFUL:
+        # 트렌드 분석 옵션
+        trend_option = st.selectbox(
+            "트렌드 분석 유형",
+            ["기본 시계열", "통합 비교", "누적 추이", "성장률 분석", "상관관계", "예측 분석"],
+            index=0
         )
         
-        # 메트릭 표시
-        safe_render_metrics(filtered_papers, filtered_patents)
-        st.markdown("---")
+        if trend_option == "기본 시계열":
+            render_basic_timeseries(papers_df, patents_df)
+        elif trend_option == "통합 비교":
+            render_combined_timeseries(papers_df, patents_df)
+        elif trend_option == "누적 추이":
+            render_cumulative_trends(papers_df, patents_df)
+        elif trend_option == "성장률 분석":
+            render_growth_rate_analysis(papers_df, patents_df)
+        elif trend_option == "상관관계":
+            render_trend_comparison(papers_df, patents_df)
+        else:  # 예측 분석
+            render_forecast_trend(papers_df, patents_df)
+    else:
+        st.error("트렌드 분석 컴포넌트를 로드할 수 없습니다.")
+
+def render_country_dashboard(papers_df, patents_df, controls):
+    """국가별 분석 대시보드"""
+    st.header("🌍 국가별 비교 분석")
+    
+    if IMPORTS_SUCCESSFUL:
+        # 국가별 분석 옵션
+        country_option = st.selectbox(
+            "국가별 분석 유형",
+            ["국가별 트렌드", "상세 분석", "포지셔닝 매트릭스", "순위 분석", "성장률 분석", "지역별 분석"],
+            index=0
+        )
         
-        # 기본 차트
-        safe_render_basic_charts(filtered_papers, filtered_patents)
-        st.markdown("---")
+        if country_option == "국가별 트렌드":
+            render_country_trends(papers_df, patents_df, top_n=10)
+            
+        elif country_option == "상세 분석":
+            if controls['selected_countries']:
+                render_country_detail_analysis(papers_df, controls['selected_countries'])
+            else:
+                st.warning("사이드바에서 분석할 국가를 선택해주세요.")
+                
+        elif country_option == "포지셔닝 매트릭스":
+            render_country_comparison_matrix(papers_df, patents_df)
+            
+        elif country_option == "순위 분석":
+            render_country_ranking(papers_df, patents_df)
+            
+        elif country_option == "성장률 분석":
+            render_country_growth_analysis(papers_df)
+            
+        else:  # 지역별 분석
+            render_regional_analysis(papers_df)
+    else:
+        st.error("국가별 분석 컴포넌트를 로드할 수 없습니다.")
+
+def render_detailed_dashboard(papers_df, patents_df, summary):
+    """상세 분석 대시보드"""
+    st.header("📋 상세 분석")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 데이터 품질", "📄 논문 상세", "⚖️ 특허 상세", "📈 종합 분석"])
+    
+    with tab1:
+        if IMPORTS_SUCCESSFUL:
+            render_data_quality_metrics(papers_df, patents_df)
+        else:
+            st.info("데이터 품질 메트릭 컴포넌트를 사용할 수 없습니다.")
+    
+    with tab2:
+        if papers_df is not None and not papers_df.empty:
+            st.subheader("논문 데이터 상세")
+            st.dataframe(papers_df.head(100), use_container_width=True)
+            
+            # 기본 통계
+            st.subheader("기본 통계")
+            numeric_cols = papers_df.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                st.dataframe(papers_df[numeric_cols].describe(), use_container_width=True)
+        else:
+            st.info("논문 데이터가 없습니다.")
+    
+    with tab3:
+        if patents_df is not None and not patents_df.empty:
+            st.subheader("특허 데이터 상세")
+            st.dataframe(patents_df.head(100), use_container_width=True)
+            
+            # 기본 통계
+            st.subheader("기본 통계")
+            numeric_cols = patents_df.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                st.dataframe(patents_df[numeric_cols].describe(), use_container_width=True)
+        else:
+            st.info("특허 데이터가 없습니다.")
+    
+    with tab4:
+        st.subheader("종합 분석 요약")
         
-        # 국가별 분석
-        safe_render_country_analysis(filtered_papers, filtered_patents)
-        st.markdown("---")
+        # 요약 정보 표시
+        col1, col2 = st.columns(2)
         
-        # 데이터 테이블
-        tab1, tab2 = st.tabs(["📄 논문 데이터", "⚖️ 특허 데이터"])
+        with col1:
+            st.write("**데이터 현황:**")
+            st.write(f"- 논문 레코드: {summary['paper_count']:,}개")
+            st.write(f"- 특허 레코드: {summary['patent_count']:,}개")
+            if summary['year_range']:
+                st.write(f"- 분석 기간: {summary['year_range'][0]}-{summary['year_range'][1]}년")
+            st.write(f"- 분석 국가: {summary['country_count']}개")
         
-        with tab1:
-            try:
-                st.subheader("논문 데이터 (상위 100행)")
-                if filtered_papers is not None and not filtered_papers.empty:
-                    st.dataframe(filtered_papers.head(100), use_container_width=True)
-                else:
-                    st.info("표시할 논문 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"논문 테이블 오류: {e}")
-        
-        with tab2:
-            try:
-                st.subheader("특허 데이터 (상위 100행)")
-                if filtered_patents is not None and not filtered_patents.empty:
-                    st.dataframe(filtered_patents.head(100), use_container_width=True)
-                else:
-                    st.info("표시할 특허 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"특허 테이블 오류: {e}")
-        
-        # 사이드바 정보
-        try:
-            st.sidebar.markdown("---")
-            st.sidebar.success(f"""
-            **현재 데이터:**
-            - 논문: {len(filtered_papers) if filtered_papers is not None else 0:,}건
-            - 특허: {len(filtered_patents) if filtered_patents is not None else 0:,}건
-            - 국가: {len(selected_countries)}개 선택
-            """)
-        except Exception as e:
-            st.sidebar.error(f"정보 표시 오류: {e}")
-        
-    except Exception as e:
-        st.error(f"애플리케이션 실행 중 치명적 오류: {e}")
-        st.info("페이지를 새로고침해주세요.")
+        with col2:
+            st.write("**주요 인사이트:**")
+            
+            # 간단한 인사이트 생성
+            if summary['paper_count'] > summary['patent_count']:
+                st.write("📄 논문 데이터가 특허 데이터보다 많습니다.")
+            elif summary['patent_count'] > summary['paper_count']:
+                st.write("⚖️ 특허 데이터가 논문 데이터보다 많습니다.")
+            else:
+                st.write("📊 논문과 특허 데이터가 균형적입니다.")
+            
+            if summary['year_range'] and summary['year_range'][1] - summary['year_range'][0] >= 5:
+                st.write("📈 장기간 트렌드 분석이 가능합니다.")
+            
+            if summary['country_count'] >= 10:
+                st.write("🌍 다양한 국가 간 비교 분석이 가능합니다.")
+
+def render_sidebar_summary(summary, controls):
+    """사이드바 요약 정보"""
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📊 현재 분석 데이터")
+    
+    st.sidebar.info(f"""
+    **필터링된 데이터:**
+    - 논문: {summary['paper_count']:,}건
+    - 특허: {summary['patent_count']:,}건
+    - 총계: {summary['total_count']:,}건
+    - 선택 국가: {len(controls['selected_countries'])}개
+    """)
+    
+    if summary['year_range']:
+        st.sidebar.success(f"📅 분석 기간: {summary['year_range'][0]}-{summary['year_range'][1]}년")
 
 if __name__ == "__main__":
     main()
