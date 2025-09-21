@@ -448,31 +448,51 @@ def render_country_trends_simple(papers_df, patents_df, top_n=10):
             # 연도별 순위 계산
             country_yearly['Rank'] = country_yearly.groupby('Year')['Total_Papers'].rank(method='dense', ascending=False)
             
-            # 애니메이션 바 차트 (순위 기반)
-            fig = px.bar(
-                country_yearly,
-                x='Total_Papers',
-                y='Country',
-                orientation='h',
-                animation_frame='Year',
-                color='Total_Citations' if 'Total_Citations' in country_yearly.columns else 'Total_Papers',
-                title=f'상위 {top_n}개국 연도별 논문 수 순위 변화',
-                labels={'Total_Papers': '논문 수', 'Total_Citations': '피인용수'},
-                range_x=[0, country_yearly['Total_Papers'].max() * 1.1],
-                color_continuous_scale='Viridis'
-            )
+            col1, col2 = st.columns(2)
             
-            fig.update_layout(
-                height=600,
-                yaxis={'categoryorder': 'total ascending'},
-                showlegend=False
-            )
+            with col1:
+                # 세로형 바 차트 (애니메이션)
+                fig_bar = px.bar(
+                    country_yearly,
+                    x='Country',
+                    y='Total_Papers',
+                    animation_frame='Year',
+                    color='Total_Citations' if 'Total_Citations' in country_yearly.columns else 'Total_Papers',
+                    title=f'상위 {top_n}개국 연도별 논문 수',
+                    labels={'Total_Papers': '논문 수', 'Total_Citations': '피인용수'},
+                    range_y=[0, country_yearly['Total_Papers'].max() * 1.1],
+                    color_continuous_scale='Viridis'
+                )
+                
+                fig_bar.update_layout(
+                    height=500,
+                    xaxis_tickangle=-45,
+                    showlegend=False
+                )
+                
+                # 애니메이션 속도 조정
+                fig_bar.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
+                fig_bar.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = 500
+                
+                st.plotly_chart(fig_bar, use_container_width=True)
             
-            # 애니메이션 속도 조정
-            fig.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
-            fig.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = 500
-            
-            st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                # 연도별 순위 그래프 (정적)
+                fig_rank = px.line(
+                    country_yearly,
+                    x='Year',
+                    y='Rank',
+                    color='Country',
+                    title='연도별 순위 변화',
+                    markers=True
+                )
+                fig_rank.update_traces(line_width=2, marker_size=6)
+                fig_rank.update_layout(
+                    height=500,
+                    yaxis=dict(autorange='reversed'),  # 순위는 1이 위에 오도록
+                    legend=dict(orientation="v", yanchor="top", y=1)
+                )
+                st.plotly_chart(fig_rank, use_container_width=True)
             
             # 국가별 요약 통계
             st.subheader("📊 상위 국가 요약 통계")
