@@ -397,19 +397,28 @@ def render_sidebar_controls(papers_df, patents_df):
     if papers_df is not None and 'Year' in papers_df.columns:
         st.sidebar.subheader("📅 분석 기간")
         
-        min_year = int(papers_df['Year'].min())
-        max_year = int(papers_df['Year'].max())
-        
-        time_range = st.sidebar.slider(
-            "연도 범위",
-            min_value=min_year,
-            max_value=max_year,
-            value=(min_year, max_year),
-            help="분석할 시간 범위를 설정하세요"
-        )
-        
-        if time_range != (min_year, max_year):
-            time_filter = time_range
+        try:
+            # Year 컬럼을 숫자로 변환하고 결측값 제거
+            years = pd.to_numeric(papers_df['Year'], errors='coerce').dropna()
+            
+            if not years.empty:
+                min_year = int(years.min())
+                max_year = int(years.max())
+                
+                time_range = st.sidebar.slider(
+                    "연도 범위",
+                    min_value=min_year,
+                    max_value=max_year,
+                    value=(min_year, max_year),
+                    help="분석할 시간 범위를 설정하세요"
+                )
+                
+                if time_range != (min_year, max_year):
+                    time_filter = time_range
+            else:
+                st.sidebar.warning("유효한 연도 데이터가 없습니다.")
+        except Exception as e:
+            st.sidebar.error(f"연도 범위 설정 오류: {e}")
     
     return {
         'tech_filter': tech_filter,
@@ -438,9 +447,15 @@ def apply_data_filters(papers_df, patents_df, filters):
         # 시간 필터
         if filters['time_filter'] and filtered_papers is not None:
             start_year, end_year = filters['time_filter']
-            filtered_papers = filtered_papers[(filtered_papers['Year'] >= start_year) & (filtered_papers['Year'] <= end_year)]
+            # Year 컬럼을 숫자로 변환
+            years = pd.to_numeric(filtered_papers['Year'], errors='coerce')
+            mask = (years >= start_year) & (years <= end_year)
+            filtered_papers = filtered_papers[mask.fillna(False)]
+            
             if filtered_patents is not None:
-                filtered_patents = filtered_patents[(filtered_patents['Year'] >= start_year) & (filtered_patents['Year'] <= end_year)]
+                years_patents = pd.to_numeric(filtered_patents['Year'], errors='coerce')
+                mask_patents = (years_patents >= start_year) & (years_patents <= end_year)
+                filtered_patents = filtered_patents[mask_patents.fillna(False)]
         
         return filtered_papers, filtered_patents
     
@@ -509,7 +524,7 @@ def main():
     
     # 5. 국가별 트렌드 (직접 구현)
     render_country_trends_simple(filtered_papers, filtered_patents, top_n=10)
-    st.markdown("---")
+        st.markdown("---")
     
     # 6. 기술 분야 트렌드
     render_technology_trends(filtered_papers)
