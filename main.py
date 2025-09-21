@@ -456,23 +456,21 @@ def render_sidebar_controls(papers_df, patents_df):
     </div>
     """, unsafe_allow_html=True)
     
-    # 기술 분야 필터만 유지
+    # 기술 분야 라디오 버튼으로 선택
     tech_filter = None
     if papers_df is not None and not papers_df.empty and 'label_m_title' in papers_df.columns:
-        st.sidebar.subheader("🔬 기술 분야 선택")
+        st.sidebar.subheader("🔬 기술 분야")
         
         try:
             tech_options = sorted(papers_df['label_m_title'].unique())
-            selected_tech = st.sidebar.selectbox(
-                "분석 대상 기술 분야",
+            selected_tech = st.sidebar.radio(
+                "분석 대상 선택",
                 options=['전체'] + tech_options,
-                index=0,
-                help="분석할 기술 분야를 선택하세요"
+                index=0
             )
             
             if selected_tech != '전체':
                 tech_filter = [selected_tech]
-                st.sidebar.success(f"✅ 선택: {selected_tech}")
         except Exception as e:
             st.sidebar.error(f"기술 분야 로드 오류: {e}")
     
@@ -609,29 +607,6 @@ def main():
     
     # 7. 종합 순위
     render_comprehensive_ranking(filtered_papers, filtered_patents)
-    
-    # 사이드바 요약
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📊 데이터 현황")
-    
-    if filtered_papers is not None:
-        paper_count = len(filtered_papers)
-        # Total_Papers 컬럼 존재 확인
-        if 'Total_Papers' in filtered_papers.columns:
-            paper_sum = filtered_papers['Total_Papers'].sum()
-            st.sidebar.metric("총 논문 수", f"{paper_sum:,}")
-        st.sidebar.metric("논문 레코드", f"{paper_count:,}")
-    
-    if filtered_patents is not None:
-        patent_count = len(filtered_patents)
-        st.sidebar.metric("특허 레코드", f"{patent_count:,}")
-        # 특허 수 컬럼 찾기
-        patent_count_cols = ['Total_Papers', 'total_papers', 'Patent_Count', 'count']
-        for col in patent_count_cols:
-            if col in filtered_patents.columns:
-                patent_sum = filtered_patents[col].sum()
-                st.sidebar.metric("총 특허 수", f"{patent_sum:,}")
-                break
 
 if __name__ == "__main__":
     main()
