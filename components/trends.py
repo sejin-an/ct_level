@@ -28,12 +28,28 @@ def safe_get_numeric_column(df, keywords):
     if df is None or df.empty:
         return None
     
+    # 우선순위로 검색
+    priority_cols = ['Total_Papers', 'total_papers', 'Patent_Count', 'count']
+    
+    # 우선순위 컬럼 먼저 확인
+    for col in priority_cols:
+        if col in df.columns:
+            try:
+                # 숫자 변환 가능한지 테스트
+                test_series = pd.to_numeric(df[col], errors='coerce')
+                if not test_series.isna().all():  # 모두 NaN이 아니면 유효
+                    return col
+            except:
+                continue
+    
+    # 키워드 기반 검색
     for col in df.columns:
         for keyword in keywords:
             if keyword.lower() in col.lower():
                 try:
-                    pd.to_numeric(df[col], errors='coerce')
-                    return col
+                    test_series = pd.to_numeric(df[col], errors='coerce')
+                    if not test_series.isna().all():
+                        return col
                 except:
                     continue
     return None
@@ -76,14 +92,14 @@ def render_paper_timeseries(papers_df):
         
         yearly_data = yearly_data.sort_values(year_col)
         
-        fig = px.line(
+        fig = px.bar(
             yearly_data, 
             x=year_col, 
             y=papers_col,
             title='📄 연도별 논문 수 추이',
-            markers=True
+            text=yearly_data[papers_col]
         )
-        fig.update_traces(line_width=3, marker_size=8)
+        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
         
@@ -128,15 +144,15 @@ def render_patent_timeseries(patents_df):
             st.warning("특허 수 합계가 0입니다.")
             return
         
-        fig = px.line(
+        fig = px.bar(
             yearly_data, 
             x=year_col, 
             y=patent_col,
             title='⚖️ 연도별 특허 수 추이',
-            markers=True,
+            text=yearly_data[patent_col],
             color_discrete_sequence=['#FF6B6B']
         )
-        fig.update_traces(line_width=3, marker_size=8)
+        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
         
@@ -147,8 +163,8 @@ def render_patent_timeseries(patents_df):
                 st.metric("📈 평균 성장률", f"{growth_rate:.1f}%")
             
     except Exception as e:
-        st.error(f"특허 시계열 분석 오류: {e}")        
-                
+        st.error(f"특허 시계열 분석 오류: {e}")
+
 def render_combined_timeseries(papers_df, patents_df):
     """통합 시계열 비교"""
     st.subheader("🔄 논문 vs 특허 통합 비교")
