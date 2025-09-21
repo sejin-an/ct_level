@@ -84,13 +84,19 @@ def get_year_range(papers_df, patents_df):
     min_year, max_year = 2015, 2024
     
     for df in [papers_df, patents_df]:
-        if df is not None:
+        if df is not None and not df.empty:
             year_col = find_year_column(df)
-            if year_col:
-                df_min = df[year_col].min()
-                df_max = df[year_col].max()
-                min_year = min(min_year, df_min)
-                max_year = max(max_year, df_max)
+            if year_col and year_col in df.columns:
+                try:
+                    # 숫자형 연도만 추출
+                    years = pd.to_numeric(df[year_col], errors='coerce').dropna()
+                    if not years.empty:
+                        df_min = int(years.min())
+                        df_max = int(years.max())
+                        min_year = min(min_year, df_min)
+                        max_year = max(max_year, df_max)
+                except (ValueError, TypeError):
+                    continue
     
     return min_year, max_year
 
@@ -128,23 +134,32 @@ def find_country_column(df):
 
 def apply_year_filter(df, year_range):
     """연도 필터 적용"""
-    if df is None:
-        return None
+    if df is None or df.empty:
+        return df
     
     year_col = find_year_column(df)
-    if year_col:
-        return df[(df[year_col] >= year_range[0]) & (df[year_col] <= year_range[1])]
+    if year_col and year_col in df.columns:
+        try:
+            # 연도를 숫자로 변환
+            years = pd.to_numeric(df[year_col], errors='coerce')
+            mask = (years >= year_range[0]) & (years <= year_range[1])
+            return df[mask]
+        except Exception:
+            return df
     
     return df
 
 def apply_country_filter(df, selected_countries):
     """국가 필터 적용"""
-    if df is None:
-        return None
+    if df is None or df.empty:
+        return df
     
     country_col = find_country_column(df)
-    if country_col:
-        return df[df[country_col].isin(selected_countries)]
+    if country_col and country_col in df.columns:
+        try:
+            return df[df[country_col].isin(selected_countries)]
+        except Exception:
+            return df
     
     return df
 
@@ -219,8 +234,8 @@ class DataLoader:
     
     def get_summary_stats(self, papers_df, patents_df):
         """요약 통계 생성"""
-        paper_count = len(papers_df) if papers_df is not None else 0
-        patent_count = len(patents_df) if patents_df is not None else 0
+        paper_count = len(papers_df) if papers_df is not None and not papers_df.empty else 0
+        patent_count = len(patents_df) if patents_df is not None and not patents_df.empty else 0
         
         year_range = None
         country_count = 0
@@ -229,16 +244,29 @@ class DataLoader:
         all_years = []
         if papers_df is not None and not papers_df.empty:
             year_col = find_year_column(papers_df)
-            if year_col:
-                all_years.extend(papers_df[year_col].dropna().tolist())
+            if year_col and year_col in papers_df.columns:
+                # 숫자형 연도만 추출
+                years = papers_df[year_col].dropna()
+                years = pd.to_numeric(years, errors='coerce').dropna()
+                if not years.empty:
+                    all_years.extend(years.tolist())
         
         if patents_df is not None and not patents_df.empty:
             year_col = find_year_column(patents_df)
-            if year_col:
-                all_years.extend(patents_df[year_col].dropna().tolist())
+            if year_col and year_col in patents_df.columns:
+                # 숫자형 연도만 추출
+                years = patents_df[year_col].dropna()
+                years = pd.to_numeric(years, errors='coerce').dropna()
+                if not years.empty:
+                    all_years.extend(years.tolist())
         
         if all_years:
-            year_range = (min(all_years), max(all_years))
+            try:
+                min_year = int(min(all_years))
+                max_year = int(max(all_years))
+                year_range = (min_year, max_year)
+            except (ValueError, TypeError):
+                year_range = None
         
         # 국가 수 계산
         all_countries = set()
