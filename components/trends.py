@@ -100,19 +100,29 @@ def render_patent_timeseries(patents_df):
     """특허 시계열 분석"""
     try:
         year_col = safe_get_column(patents_df, ['Year', '연도'])
-        patent_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
+        patent_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허', 'Total_Papers'])
         
         if not year_col:
             st.info("연도 컬럼을 찾을 수 없습니다.")
             return
+        
+        # Year 컬럼을 숫자로 변환
+        patents_clean = patents_df.copy()
+        patents_clean[year_col] = pd.to_numeric(patents_clean[year_col], errors='coerce')
+        patents_clean = patents_clean.dropna(subset=[year_col])
+        
+        if patents_clean.empty:
+            st.warning("유효한 연도 데이터가 없습니다.")
+            return
             
         if not patent_col:
             # 단순 개수 집계
-            yearly_data = patents_df.groupby(year_col).size().reset_index(name='Count')
+            yearly_data = patents_clean.groupby(year_col).size().reset_index(name='Count')
             patent_col = 'Count'
         else:
-            # 합계 집계
-            yearly_data = patents_df.groupby(year_col)[patent_col].sum().reset_index()
+            # 숫자형 컬럼만 합계 계산
+            patents_clean[patent_col] = pd.to_numeric(patents_clean[patent_col], errors='coerce').fillna(0)
+            yearly_data = patents_clean.groupby(year_col)[patent_col].sum().reset_index()
         
         yearly_data = yearly_data.sort_values(year_col)
         
@@ -136,7 +146,7 @@ def render_patent_timeseries(patents_df):
             
     except Exception as e:
         st.error(f"특허 시계열 분석 오류: {e}")
-
+        
 def render_combined_timeseries(papers_df, patents_df):
     """통합 시계열 비교"""
     st.subheader("🔄 논문 vs 특허 통합 비교")
