@@ -242,18 +242,17 @@ def render_country_comparison(papers_df, patents_df):
         col1, col2 = st.columns(2)
         
         with col1:
-            # 논문 수 순위 - 가로형 바차트 + 숫자 표기
+            # 논문 수 순위 - 세로형 바차트 + 숫자 표기
             import plotly.express as px
             fig_papers = px.bar(
-                x=top_countries.values,
-                y=top_countries.index,
-                orientation='h',
+                x=top_countries.index,
+                y=top_countries.values,
                 title='상위 15개국 논문 수',
-                labels={'x': '논문 수', 'y': '국가'},
+                labels={'x': '국가', 'y': '논문 수'},
                 text=top_countries.values
             )
             fig_papers.update_traces(texttemplate='%{text:,}', textposition='outside')
-            fig_papers.update_layout(height=500)
+            fig_papers.update_layout(height=500, xaxis_tickangle=-45)
             st.plotly_chart(fig_papers, use_container_width=True)
         
         with col2:
