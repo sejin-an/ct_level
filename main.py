@@ -431,49 +431,152 @@ def render_technology_trends(papers_df):
         st.warning("기술 분야 분석을 위한 데이터가 없습니다.")
         return
     
-    st.subheader("🚀 기술 분야별 트렌드")
+    st.subheader("🚀 기술 분야별 상세 트렌드")
     
     try:
-        # 상위 10개 기술 분야
-        top_techs = papers_df.groupby('label_s_title')['Total_Papers'].sum().nlargest(10)
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
         
+        # 상위 15개 기술 분야
+        top_techs = papers_df.groupby('label_s_title')['Total_Papers'].sum().nlargest(15)
+        
+        # 2x2 레이아웃
         col1, col2 = st.columns(2)
         
         with col1:
-            # 기술 분야별 논문 수
-            import plotly.express as px
-            fig_tech = px.bar(
-                x=top_techs.values,
-                y=top_techs.index,
-                orientation='h',
-                title='상위 10개 기술 분야',
-                labels={'x': '논문 수', 'y': '기술 분야'}
-            )
-            fig_tech.update_layout(height=400)
-            st.plotly_chart(fig_tech, use_container_width=True)
+            # 1. 기술 분야별 논문 수 + 성장률
+            fig_growth = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            papers_clean, valid_years = safe_get_year_data(papers_df)
+            if valid_years and len(valid_years) >= 3:
+                recent_3_years = sorted(valid_years)[-3:]
+                past_3_years = sorted(valid_years)[-6:-3]
+                
+                recent_data = papers_clean[papers_clean['Year_numeric'].isin(recent_3_years)]
+                past_data = papers_clean[papers_clean['Year_numeric'].isin(past_3_years)]
+                
+                recent_tech = recent_data.groupby('label_s_title')['Total_Papers'].sum()
+                past_tech = past_data.groupby('label_s_title')['Total_Papers'].sum()
+                
+                growth_data = pd.DataFrame({
+                    'Recent': recent_tech,
+                    'Past': past_tech
+                }).fillna(0)
+                growth_data['Growth_Rate'] = ((growth_data['Recent'] / growth_data['Past'].replace(0, 1)) - 1) * 100
+                
+                top_growth = growth_data.nlargest(10, 'Recent')
+                
+                fig_growth.add_trace(
+                    go.Bar(x=top_growth.index, y=top_growth['Recent'], name='최근3년 논문수'),
+                    secondary_y=False
+                )
+                fig_growth.add_trace(
+                    go.Scatter(x=top_growth.index, y=top_growth['Growth_Rate'], 
+                             mode='lines+markers', name='성장률(%)', line=dict(color='red')),
+                    secondary_y=True
+                )
+                
+                fig_growth.update_layout(title='기술분야별 논문수 & 성장률', height=400, xaxis_tickangle=-45)
+                fig_growth.update_yaxes(title_text="논문 수", secondary_y=False)
+                fig_growth.update_yaxes(title_text="성장률 (%)", secondary_y=True)
+                
+                st.plotly_chart(fig_growth, use_container_width=True)
+            
+            # 2. 기술 분야별 품질 지표 히트맵
+            if 'Q1_Ratio(%)' in papers_df.columns:
+                tech_quality = papers_df.groupby('label_s_title').agg({
+                    'Total_Papers': 'sum',
+                    'Q1_Ratio(%)': 'mean',
+                    'Avg_Citations': 'mean' if 'Avg_Citations' in papers_df.columns else lambda x: 0,
+                    'H_Index': 'mean' if 'H_Index' in papers_df.columns else lambda x: 0
+                }).round(2)
+                
+                top_tech_quality = tech_quality.nlargest(10, 'Total_Papers')
+                
+                # 정규화
+                normalized_data = top_tech_quality.copy()
+                for col in ['Total_Papers', 'Q1_Ratio(%)', 'Avg_Citations', 'H_Index']:
+                    if col in normalized_data.columns:
+                        max_val = normalized_data[col].max()
+                        if max_val > 0:
+                            normalized_data[col] = (normalized_data[col] / max_val) * 100
+                
+                fig_heatmap = px.imshow(
+                    normalized_data.T,
+                    title='기술분야별 품질지표 히트맵 (정규화)',
+                    color_continuous_scale='Viridis',
+                    aspect='auto'
+                )
+                fig_heatmap.update_layout(height=400)
+                st.plotly_chart(fig_heatmap, use_container_width=True)
         
         with col2:
-            # 기술 분야별 시계열 (상위 5개)
-            papers_clean, valid_years = safe_get_year_data(papers_df)
-            
+            # 3. 기술 분야별 시계열 (상위 5개)
             if valid_years and not papers_clean.empty:
-                import plotly.express as px
                 top_5_techs = top_techs.head(5).index.tolist()
                 tech_yearly = papers_clean[papers_clean['label_s_title'].isin(top_5_techs)].groupby(['Year_numeric', 'label_s_title'])['Total_Papers'].sum().reset_index()
                 tech_yearly.columns = ['Year', 'label_s_title', 'Total_Papers']
                 
-                fig_tech_trend = px.line(
+                fig_tech_trend = px.area(
                     tech_yearly,
                     x='Year',
                     y='Total_Papers',
                     color='label_s_title',
-                    title='주요 기술 분야 연도별 추이',
-                    markers=True
+                    title='주요 기술분야 연도별 추이 (면적형)',
                 )
                 fig_tech_trend.update_layout(height=400)
                 st.plotly_chart(fig_tech_trend, use_container_width=True)
-            else:
-                st.warning("기술 분야 시계열 데이터가 없습니다.")
+            
+            # 4. 기술 분야 포트폴리오 (파이차트 + 트리맵)
+            fig_portfolio = make_subplots(
+                rows=1, cols=2,
+                specs=[[{"type": "pie"}, {"type": "treemap"}]],
+                subplot_titles=["비중 분포", "계층 구조"]
+            )
+            
+            # 파이차트
+            top_10_techs = top_techs.head(10)
+            others_sum = papers_df[~papers_df['label_s_title'].isin(top_10_techs.index)]['Total_Papers'].sum()
+            
+            pie_data = pd.concat([top_10_techs, pd.Series([others_sum], index=['기타'])])
+            
+            fig_pie = px.pie(values=pie_data.values, names=pie_data.index)
+            for trace in fig_pie.data:
+                fig_portfolio.add_trace(trace, row=1, col=1)
+            
+            # 트리맵은 단순화
+            if 'label_m_title' in papers_df.columns:
+                treemap_data = papers_df.groupby(['label_m_title', 'label_s_title'])['Total_Papers'].sum().reset_index()
+                treemap_data = treemap_data.nlargest(20, 'Total_Papers')
+                
+                fig_treemap = px.treemap(
+                    treemap_data,
+                    path=['label_m_title', 'label_s_title'],
+                    values='Total_Papers'
+                )
+                for trace in fig_treemap.data:
+                    fig_portfolio.add_trace(trace, row=1, col=2)
+            
+            fig_portfolio.update_layout(height=400, title_text="기술분야 포트폴리오")
+            st.plotly_chart(fig_portfolio, use_container_width=True)
+        
+        # 하단: 기술 분야별 상세 테이블
+        st.subheader("📋 기술분야별 상세 통계")
+        
+        tech_stats = papers_df.groupby('label_s_title').agg({
+            'Total_Papers': 'sum',
+            'Q1_Ratio(%)': 'mean' if 'Q1_Ratio(%)' in papers_df.columns else lambda x: 0,
+            'Avg_Citations': 'mean' if 'Avg_Citations' in papers_df.columns else lambda x: 0,
+            'H_Index': 'mean' if 'H_Index' in papers_df.columns else lambda x: 0,
+            'Country': 'nunique'
+        }).round(2)
+        tech_stats.columns = ['논문수', 'Q1비율(%)', '평균인용', 'H지수', '참여국가수']
+        tech_stats = tech_stats.sort_values('논문수', ascending=False).head(20)
+        tech_stats.insert(0, '순위', range(1, len(tech_stats) + 1))
+        
+        st.dataframe(tech_stats, use_container_width=True)
+        
     except Exception as e:
         st.error(f"기술 분야 트렌드 분석 오류: {e}")
 
