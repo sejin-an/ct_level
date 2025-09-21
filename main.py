@@ -882,12 +882,10 @@ def main():
         st.markdown("---")
     
     # 3. 연구 품질 & 혁신 분석
-    col1, col2 = st.columns(2)
-    with col1:
-        render_research_quality_analysis(filtered_papers)
-    with col2:
-        render_innovation_analysis(filtered_patents)
+    render_research_quality_analysis(filtered_papers)
+    st.markdown("---")
     
+    render_innovation_analysis(filtered_patents)
     st.markdown("---")
     
     # 4. 국가별 비교
