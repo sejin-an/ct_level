@@ -118,7 +118,7 @@ def render_patent_timeseries(patents_df):
         if not patent_col:
             # 단순 개수 집계
             yearly_data = patents_clean.groupby(year_col).size().reset_index(name='Count')
-            patent_col = 'Total_Papers'
+            patent_col = 'Count'
         else:
             # 숫자형 컬럼만 합계 계산
             patents_clean[patent_col] = pd.to_numeric(patents_clean[patent_col], errors='coerce').fillna(0)
@@ -147,6 +147,7 @@ def render_patent_timeseries(patents_df):
     except Exception as e:
         st.error(f"특허 시계열 분석 오류: {e}")
         
+                
 def render_combined_timeseries(papers_df, patents_df):
     """통합 시계열 비교"""
     st.subheader("🔄 논문 vs 특허 통합 비교")
