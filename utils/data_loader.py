@@ -17,28 +17,12 @@ def load_data():
     
     if os.path.exists(excel_file):
         try:
-            # 엑셀 파일의 모든 시트 확인
-            excel_sheets = pd.ExcelFile(excel_file).sheet_names
-            st.sidebar.info(f"발견된 시트: {', '.join(excel_sheets)}")
-            
-            # '논문' 시트 읽기
-            if '논문' in excel_sheets:
-                papers_df = pd.read_excel(excel_file, sheet_name='논문')
-                st.sidebar.success(f"논문 데이터 로드 완료: {len(papers_df):,} 행, {len(papers_df.columns)} 열")
-            else:
-                st.sidebar.warning("'논문' 시트를 찾을 수 없습니다.")
-            
-            # '특허' 시트 읽기
-            if '특허' in excel_sheets:
-                patents_df = pd.read_excel(excel_file, sheet_name='특허')
-                st.sidebar.success(f"특허 데이터 로드 완료: {len(patents_df):,} 행, {len(patents_df.columns)} 열")
-            else:
-                st.sidebar.warning("'특허' 시트를 찾을 수 없습니다.")
-            
+            papers_df = pd.read_excel(excel_file, sheet_name='논문')
+            patents_df = pd.read_excel(excel_file, sheet_name='특허')
         except Exception as e:
-            st.sidebar.error(f"엑셀 파일 로드 실패: {e}")
+            st.sidebar.error(f"데이터 로드 실패: {e}")
     else:
-        st.sidebar.warning(f"엑셀 파일을 찾을 수 없습니다: {excel_file}")
+        st.sidebar.warning(f"파일을 찾을 수 없습니다: {excel_file}")
     
     return papers_df, patents_df
 
