@@ -38,6 +38,141 @@ def safe_get_numeric_column(df, keywords):
                     continue
     return None
 
+def render_smart_timeseries(papers_df, patents_df):
+    """스마트 시계열 분석 - 데이터 구조에 따라 자동 차트 선택"""
+    st.subheader("📈 스마트 시계열 분석")
+    
+    from utils.data_loader import detect_data_structure
+    
+    paper_structure = detect_data_structure(papers_df) if papers_df is not None else None
+    patent_structure = detect_data_structure(patents_df) if patents_df is not None else None
+    
+    # 통합 시계열 (둘 다 시계열 데이터가 있는 경우)
+    if (paper_structure and paper_structure['has_timeseries'] and 
+        patent_structure and patent_structure['has_timeseries']):
+        render_integrated_timeseries(papers_df, patents_df, paper_structure, patent_structure)
+    
+    # 개별 시계열
+    elif paper_structure and paper_structure['has_timeseries']:
+        render_single_timeseries_smart(papers_df, paper_structure, "논문")
+    elif patent_structure and patent_structure['has_timeseries']:
+        render_single_timeseries_smart(patents_df, patent_structure, "특허")
+    else:
+        st.warning("시계열 데이터가 없습니다.")
+
+def render_integrated_timeseries(papers_df, patents_df, paper_structure, patent_structure):
+    """통합 시계열 차트"""
+    try:
+        paper_year_col = paper_structure['time_columns'][0]
+        patent_year_col = patent_structure['time_columns'][0]
+        
+        paper_numeric_col = paper_structure['numeric_columns'][0] if paper_structure['numeric_columns'] else None
+        patent_numeric_col = patent_structure['numeric_columns'][0] if patent_structure['numeric_columns'] else None
+        
+        if not paper_numeric_col or not patent_numeric_col:
+            st.warning("분석할 수치 컬럼이 없습니다.")
+            return
+        
+        # 연도별 집계
+        paper_yearly = papers_df.groupby(paper_year_col)[paper_numeric_col].sum().reset_index()
+        patent_yearly = patents_df.groupby(patent_year_col)[patent_numeric_col].sum().reset_index()
+        
+        # 이중축 차트
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        fig.add_trace(
+            go.Scatter(
+                x=paper_yearly[paper_year_col],
+                y=paper_yearly[paper_numeric_col],
+                mode='lines+markers',
+                name='논문',
+                line=dict(color='#2E86AB', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=False,
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=patent_yearly[patent_year_col],
+                y=patent_yearly[patent_numeric_col],
+                mode='lines+markers',
+                name='특허',
+                line=dict(color='#A23B72', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=True,
+        )
+        
+        fig.update_xaxes(title_text="연도")
+        fig.update_yaxes(title_text="논문 수", secondary_y=False)
+        fig.update_yaxes(title_text="특허 수", secondary_y=True)
+        fig.update_layout(title="📈 논문 vs 특허 통합 시계열", height=500)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 성장률 메트릭
+        render_growth_metrics(paper_yearly, patent_yearly, paper_numeric_col, patent_numeric_col)
+        
+    except Exception as e:
+        st.error(f"통합 시계열 분석 오류: {e}")
+
+def render_single_timeseries_smart(df, structure, title):
+    """단일 시계열 차트 (스마트)"""
+    try:
+        year_col = structure['time_columns'][0]
+        numeric_cols = structure['numeric_columns'][:3]  # 최대 3개
+        
+        if not numeric_cols:
+            st.warning(f"{title} 수치 데이터가 없습니다.")
+            return
+        
+        # 연도별 집계
+        fig = go.Figure()
+        colors = ['#2E86AB', '#A23B72', '#F18F01']
+        
+        for i, col in enumerate(numeric_cols):
+            yearly_data = df.groupby(year_col)[col].sum().reset_index()
+            
+            fig.add_trace(go.Scatter(
+                x=yearly_data[year_col],
+                y=yearly_data[col],
+                mode='lines+markers',
+                name=col,
+                line=dict(color=colors[i], width=3),
+                marker=dict(size=8)
+            ))
+        
+        fig.update_layout(
+            title=f"📈 {title} 시계열 추이",
+            xaxis_title="연도",
+            yaxis_title="값",
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"{title} 시계열 분석 오류: {e}")
+
+def render_growth_metrics(paper_data, patent_data, paper_col, patent_col):
+    """성장률 메트릭"""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if len(paper_data) > 1:
+            paper_growth = paper_data[paper_col].pct_change().mean() * 100
+            recent_growth = ((paper_data[paper_col].iloc[-1] - paper_data[paper_col].iloc[-2]) / 
+                           paper_data[paper_col].iloc[-2]) * 100
+            st.metric("📄 논문 평균 성장률", f"{paper_growth:.1f}%", f"{recent_growth:.1f}% (최근)")
+    
+    with col2:
+        if len(patent_data) > 1:
+            patent_growth = patent_data[patent_col].pct_change().mean() * 100
+            recent_growth = ((patent_data[patent_col].iloc[-1] - patent_data[patent_col].iloc[-2]) / 
+                           patent_data[patent_col].iloc[-2]) * 100
+            st.metric("⚖️ 특허 평균 성장률", f"{patent_growth:.1f}%", f"{recent_growth:.1f}% (최근)")
+
 def render_basic_timeseries(papers_df, patents_df):
     """기본 시계열 분석"""
     st.subheader("📈 기본 시계열 분석")
