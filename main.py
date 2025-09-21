@@ -389,25 +389,46 @@ def render_comprehensive_ranking(papers_df, patents_df):
         return
     
     try:
+        # 컬럼 존재 확인
+        required_cols = ['Country', 'Total_Papers']
+        missing_cols = [col for col in required_cols if col not in papers_df.columns]
+        
+        if missing_cols:
+            st.error(f"필수 컬럼 누락: {missing_cols}")
+            st.info("사용 가능한 컬럼:")
+            st.write(list(papers_df.columns))
+            return
+        
         # 논문 데이터 집계
         paper_summary = papers_df.groupby('Country').agg({
             'Total_Papers': 'sum',
-            'Q1_Ratio(%)': 'mean',
-            'Avg_Citations': 'mean',
-            'H_Index': 'mean'
+            'Q1_Ratio(%)': 'mean' if 'Q1_Ratio(%)' in papers_df.columns else lambda x: 0,
+            'Avg_Citations': 'mean' if 'Avg_Citations' in papers_df.columns else lambda x: 0,
+            'H_Index': 'mean' if 'H_Index' in papers_df.columns else lambda x: 0
         }).round(2)
         
         # 특허 데이터 집계 (있는 경우)
-        if patents_df is not None and not patents_df.empty:
-            patent_summary = patents_df.groupby('Country').agg({
-                'Total_Papers': 'sum',
-                'triadic_count': 'sum'
-            }).round(2)
-            patent_summary.columns = ['Patent_Count', 'Triadic_Count']
+        if patents_df is not None and not patents_df.empty and 'Country' in patents_df.columns:
+            # 특허 데이터의 실제 컬럼 확인
+            patent_count_col = None
+            for col in ['Total_Papers', 'total_papers', 'Patent_Count', 'count']:
+                if col in patents_df.columns:
+                    patent_count_col = col
+                    break
             
-            # 병합
-            combined_ranking = paper_summary.merge(patent_summary, left_index=True, right_index=True, how='left')
-            combined_ranking = combined_ranking.fillna(0)
+            if patent_count_col:
+                patent_agg = {patent_count_col: 'sum'}
+                if 'triadic_count' in patents_df.columns:
+                    patent_agg['triadic_count'] = 'sum'
+                
+                patent_summary = patents_df.groupby('Country').agg(patent_agg).round(2)
+                patent_summary.columns = ['Patent_Count'] + (['Triadic_Count'] if 'triadic_count' in patents_df.columns else [])
+                
+                # 병합
+                combined_ranking = paper_summary.merge(patent_summary, left_index=True, right_index=True, how='left')
+                combined_ranking = combined_ranking.fillna(0)
+            else:
+                combined_ranking = paper_summary
         else:
             combined_ranking = paper_summary
         
@@ -416,8 +437,14 @@ def render_comprehensive_ranking(papers_df, patents_df):
         top_20.insert(0, '순위', range(1, len(top_20) + 1))
         
         st.dataframe(top_20, use_container_width=True)
+        
     except Exception as e:
         st.error(f"종합 순위 분석 오류: {e}")
+        # 디버깅 정보
+        if papers_df is not None:
+            st.write("논문 데이터 컬럼:", list(papers_df.columns))
+        if patents_df is not None:
+            st.write("특허 데이터 컬럼:", list(patents_df.columns))
 
 def render_sidebar_controls(papers_df, patents_df):
     """사이드바 컨트롤"""
@@ -555,6 +582,26 @@ def main():
     
     papers_df, patents_df = load_data()
     
+    # 데이터 구조 디버깅 정보
+    with st.expander("🔍 데이터 구조 확인"):
+        if papers_df is not None:
+            st.write("**논문 데이터 정보:**")
+            st.write(f"- 행 수: {len(papers_df):,}")
+            st.write(f"- 컬럼 수: {len(papers_df.columns)}")
+            st.write(f"- 컬럼명: {list(papers_df.columns)}")
+            if len(papers_df) > 0:
+                st.write("**첫 3행 미리보기:**")
+                st.dataframe(papers_df.head(3))
+        
+        if patents_df is not None:
+            st.write("**특허 데이터 정보:**")
+            st.write(f"- 행 수: {len(patents_df):,}")
+            st.write(f"- 컬럼 수: {len(patents_df.columns)}")
+            st.write(f"- 컬럼명: {list(patents_df.columns)}")
+            if len(patents_df) > 0:
+                st.write("**첫 3행 미리보기:**")
+                st.dataframe(patents_df.head(3))
+    
     if papers_df is None and patents_df is None:
         st.error("분석할 데이터가 없습니다. 데이터 파일을 확인해주세요.")
         return
@@ -614,15 +661,22 @@ def main():
     
     if filtered_papers is not None:
         paper_count = len(filtered_papers)
-        paper_sum = filtered_papers['Total_Papers'].sum()
+        # Total_Papers 컬럼 존재 확인
+        if 'Total_Papers' in filtered_papers.columns:
+            paper_sum = filtered_papers['Total_Papers'].sum()
+            st.sidebar.metric("총 논문 수", f"{paper_sum:,}")
         st.sidebar.metric("논문 레코드", f"{paper_count:,}")
-        st.sidebar.metric("총 논문 수", f"{paper_sum:,}")
     
     if filtered_patents is not None:
         patent_count = len(filtered_patents)
-        patent_sum = filtered_patents['Total_Papers'].sum()
         st.sidebar.metric("특허 레코드", f"{patent_count:,}")
-        st.sidebar.metric("총 특허 수", f"{patent_sum:,}")
+        # 특허 수 컬럼 찾기
+        patent_count_cols = ['Total_Papers', 'total_papers', 'Patent_Count', 'count']
+        for col in patent_count_cols:
+            if col in filtered_patents.columns:
+                patent_sum = filtered_patents[col].sum()
+                st.sidebar.metric("총 특허 수", f"{patent_sum:,}")
+                break
 
 if __name__ == "__main__":
     main()
