@@ -118,7 +118,7 @@ def render_patent_timeseries(patents_df):
         if not patent_col:
             # 단순 개수 집계
             yearly_data = patents_clean.groupby(year_col).size().reset_index(name='Count')
-            patent_col = 'Count'
+            patent_col = 'Total_Papers'
         else:
             # 숫자형 컬럼만 합계 계산
             patents_clean[patent_col] = pd.to_numeric(patents_clean[patent_col], errors='coerce').fillna(0)
