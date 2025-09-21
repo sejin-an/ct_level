@@ -351,24 +351,23 @@ def render_country_comparison(papers_df, patents_df):
                 papers_clean, valid_years = safe_get_year_data(papers_df)
                 
                 if valid_years and not papers_clean.empty:
-                    bubble_data = papers_clean[papers_clean['Country'].isin(top_countries.index[:10])].groupby(['Year_numeric', 'Country']).agg({
+                    bubble_data = papers_clean[papers_clean['Country'].isin(top_countries.index[:5])].groupby(['Year_numeric', 'Country']).agg({
                         'Total_Papers': 'sum',
                         'Q1_Ratio(%)': 'mean',
                         'Total_Citations': 'sum'
                     }).reset_index()
                     bubble_data.columns = ['Year', 'Country', 'Total_Papers', 'Q1_Ratio', 'Total_Citations']
                     
-                    fig_bubble = px.scatter(
+                    fig_bubble = px.line(
                         bubble_data,
                         x='Total_Papers',
                         y='Q1_Ratio',
-                        size='Total_Citations',
                         color='Country',
-                        animation_frame='Year',
-                        title='논문 규모 vs 품질 (버블: 피인용수)',
+                        title='논문 규모 vs 품질 경로 추적',
                         labels={'Total_Papers': '총 논문 수', 'Q1_Ratio': 'Q1 비율 (%)'},
-                        size_max=60
+                        markers=True
                     )
+                    fig_bubble.update_traces(line_width=2, marker_size=8)
                     fig_bubble.update_layout(height=400)
                     st.plotly_chart(fig_bubble, use_container_width=True)
         
@@ -396,7 +395,7 @@ def render_country_comparison(papers_df, patents_df):
                     patents_clean, patent_years = safe_get_year_data(patents_df)
                     
                     if patent_years and not patents_clean.empty:
-                        patent_bubble_data = patents_clean[patents_clean['Country'].isin(top_patent_countries.index[:10])].groupby(['Year_numeric', 'Country']).agg({
+                        patent_bubble_data = patents_clean[patents_clean['Country'].isin(top_patent_countries.index[:5])].groupby(['Year_numeric', 'Country']).agg({
                             'Total_Papers': 'sum',
                             'ip4_count': 'sum',
                             'total_citations': 'sum'
@@ -404,18 +403,16 @@ def render_country_comparison(papers_df, patents_df):
                         patent_bubble_data.columns = ['Year', 'Country', 'Total_Patents', 'IP4_Count', 'Total_Citations']
                         patent_bubble_data['IP4_Ratio'] = (patent_bubble_data['IP4_Count'] / patent_bubble_data['Total_Patents']) * 100
                         
-                        fig_patent_bubble = px.scatter(
+                        fig_patent_bubble = px.line(
                             patent_bubble_data,
                             x='Total_Patents',
                             y='IP4_Ratio',
-                            size='Total_Citations',
                             color='Country',
-                            animation_frame='Year',
-                            title='특허 규모 vs IP4 비율 (버블: 피인용수)',
+                            title='특허 규모 vs IP4 비율 경로 추적',
                             labels={'Total_Patents': '총 특허 수', 'IP4_Ratio': 'IP4 비율 (%)'},
-                            size_max=60,
-                            color_discrete_sequence=px.colors.qualitative.Set2
+                            markers=True
                         )
+                        fig_patent_bubble.update_traces(line_width=2, marker_size=8)
                         fig_patent_bubble.update_layout(height=400)
                         st.plotly_chart(fig_patent_bubble, use_container_width=True)
                     else:
