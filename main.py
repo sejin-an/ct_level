@@ -21,211 +21,135 @@ st.set_page_config(
 )
 
 # 데이터 로드 함수
-@st.cache_data
 def load_data():
-    """엑셀 파일에서 데이터 로드 - 대용량 최적화"""
+    """엑셀 파일에서 데이터 로드 - 캐시 제거하고 단순화"""
     try:
-        # 여러 가지 방법으로 시도
-        try:
-            # 방법 1: 기본 pandas 읽기 (첫 1000행으로 구조 확인)
-            df_sample = pd.read_excel('_통합평가자료.xlsx', nrows=1000)
-            st.info(f"📊 샘플 로드 완료: {len(df_sample)}행, {len(df_sample.columns)}열")
-            
-            # 전체 데이터 로드 여부 확인
-            load_full = st.sidebar.checkbox("🔄 전체 데이터 로드", value=False, 
-                                          help="체크하면 전체 16만행을 로드합니다 (시간이 오래 걸릴 수 있음)")
-            
-            if load_full:
-                df = pd.read_excel('_통합평가자료.xlsx')
-                st.success(f"✅ 전체 데이터 로드 성공: {len(df)}행, {len(df.columns)}열")
-            else:
-                # 샘플 데이터 사용 (분석용)
-                df = df_sample.copy()
-                st.warning("⚠️ 샘플 데이터 사용 중 (1000행). 전체 분석을 원하면 사이드바에서 '전체 데이터 로드'를 체크하세요.")
-                
-        except Exception as e1:
-            try:
-                # 방법 2: 시트명 지정
-                df = pd.read_excel('_통합평가자료.xlsx', sheet_name='Sheet4', nrows=5000)
-                st.success("✅ 시트명 지정으로 데이터 로드 성공 (5000행 제한)")
-            except Exception as e2:
-                try:
-                    # 방법 3: 엔진 지정
-                    df = pd.read_excel('_통합평가자료.xlsx', sheet_name=0, engine='openpyxl', nrows=5000)
-                    st.success("✅ openpyxl 엔진으로 데이터 로드 성공 (5000행 제한)")
-                except Exception as e3:
-                    st.error(f"모든 방법 실패:")
-                    st.error(f"방법1: {e1}")
-                    st.error(f"방법2: {e2}")
-                    st.error(f"방법3: {e3}")
-                    return pd.DataFrame()
+        # 전체 데이터 로드 여부를 메인에서 처리
+        df = pd.read_excel('_통합평가자료.xlsx')
         
         # 컬럼명 정리
         df.columns = df.columns.str.strip()
         
-        # 메모리 사용량 최적화
+        # 메모리 사용량 계산
         memory_usage = df.memory_usage(deep=True).sum() / 1024**2  # MB
         st.info(f"💾 메모리 사용량: {memory_usage:.1f} MB")
         
         # 기본 정보 표시
-        st.info(f"📊 데이터 로드 완료: {len(df):,}행, {len(df.columns)}열")
+        st.success(f"✅ 데이터 로드 완료: {len(df):,}행, {len(df.columns)}열")
         
         return df
         
     except Exception as e:
         st.error(f"데이터 로드 오류: {e}")
-        st.info("파일 경로를 확인하고 다음을 시도해보세요:")
-        st.code("""
-        # 현재 디렉토리 확인
-        import os
-        print("현재 디렉토리:", os.getcwd())
-        print("파일 목록:", os.listdir('.'))
-        """)
         return pd.DataFrame()
 
-# 데이터 전처리 함수
+# 데이터 전처리 함수 - Label_m, Label_s 기준으로 분류
 def preprocess_data(df):
-    """데이터 전처리 - 대용량 데이터 안전 처리"""
+    """데이터 전처리 - Label_m과 Label_s를 기준으로 정확한 분류"""
     if df.empty:
         return {
-            'yearly_data': pd.DataFrame(),
-            'summary_data': pd.DataFrame(),
             'yearly_papers': pd.DataFrame(),
             'yearly_patents': pd.DataFrame(),
             'summary_papers': pd.DataFrame(),
-            'summary_patents': pd.DataFrame()
+            'summary_patents': pd.DataFrame(),
+            'all_data': df
         }
     
     st.info(f"🔄 데이터 전처리 시작... ({len(df):,}행)")
     
     df = df.copy()
     
-    # Year 컬럼이 존재하는지 확인
-    if 'Year' not in df.columns:
-        st.warning("'Year' 컬럼을 찾을 수 없습니다.")
-        # 대안으로 연도 같은 컬럼 찾기
-        possible_year_cols = [col for col in df.columns if 'year' in str(col).lower() or 'yr' in str(col).lower()]
-        if possible_year_cols:
-            df['Year'] = df[possible_year_cols[0]]
-            st.info(f"'{possible_year_cols[0]}' 컬럼을 Year로 사용합니다.")
-        else:
-            df['Year'] = np.nan
+    # 기본 컬럼 확인
+    required_cols = ['구분', 'Label_m', 'Label_s']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        st.error(f"필수 컬럼이 없습니다: {missing_cols}")
+        return {
+            'yearly_papers': pd.DataFrame(),
+            'yearly_patents': pd.DataFrame(), 
+            'summary_papers': pd.DataFrame(),
+            'summary_patents': pd.DataFrame(),
+            'all_data': df
+        }
     
-    # Year 컬럼 안전하게 처리
-    try:
-        # Year 컬럼의 고유값 확인
-        year_values = df['Year'].dropna().unique()
-        st.write(f"**Year 컬럼 고유값 (처음 10개):** {sorted(year_values)[:10]}")
-        
-        # 연도처럼 보이는 값들만 필터링 (1990-2030)
-        valid_years = []
-        for val in year_values:
-            try:
-                year_int = int(float(val))
-                if 1990 <= year_int <= 2030:
-                    valid_years.append(year_int)
-            except (ValueError, TypeError):
-                continue
-        
-        st.info(f"유효한 연도 값: {sorted(valid_years)}")
-        
-        # Year가 있는 데이터와 없는 데이터 분리 (안전하게)
-        def is_valid_year(val):
-            if pd.isna(val):
-                return False
-            try:
-                year_int = int(float(val))
-                return 1990 <= year_int <= 2030
-            except (ValueError, TypeError):
-                return False
-        
-        df['is_valid_year'] = df['Year'].apply(is_valid_year)
-        yearly_data = df[df['is_valid_year']].copy()
-        summary_data = df[~df['is_valid_year']].copy()
-        
-        # 유효한 연도 데이터의 Year를 정수로 변환
-        if not yearly_data.empty:
-            yearly_data['Year'] = yearly_data['Year'].apply(lambda x: int(float(x)) if pd.notna(x) else x)
-        
-        st.success(f"✅ 연도별 데이터: {len(yearly_data):,}행, 통합 데이터: {len(summary_data):,}행")
-        
-    except Exception as e:
-        st.error(f"Year 컬럼 처리 중 오류: {e}")
-        # 안전 모드: 모든 데이터를 summary로 처리
-        yearly_data = pd.DataFrame()
-        summary_data = df.copy()
-        st.warning("⚠️ 모든 데이터를 통합 지표로 처리합니다.")
+    # 구분별 기본 분류
+    papers_mask = df['구분'].astype(str).str.contains('논문|1\\.', na=False)
+    patents_mask = df['구분'].astype(str).str.contains('특허|2\\.', na=False)
     
-    # 구분 컬럼 확인 및 처리
-    category_col = None
-    for col in ['구분', '분류', 'Category', 'Type', 'category', 'type']:
-        if col in df.columns:
-            category_col = col
-            break
+    papers_df = df[papers_mask].copy()
+    patents_df = df[patents_mask].copy()
     
-    if category_col is None:
-        st.warning("구분 컬럼을 찾을 수 없습니다. 데이터를 샘플링하여 확인합니다.")
-        # 샘플 데이터로 구분 컬럼 추정
-        sample_df = df.head(1000)  # 처음 1000행만 확인
-        for col in sample_df.columns:
-            unique_vals = sample_df[col].dropna().astype(str).unique()
-            if any('논문' in str(val) or 'paper' in str(val).lower() for val in unique_vals):
-                category_col = col
-                st.info(f"'{col}' 컬럼을 구분 컬럼으로 사용합니다.")
-                break
+    st.info(f"📊 구분별 데이터: 논문 {len(papers_df)}행, 특허 {len(patents_df)}행")
     
-    # 논문/특허 분리
-    if category_col is None:
-        st.info("구분 컬럼이 없어 모든 데이터를 논문으로 처리합니다.")
-        yearly_papers = yearly_data.copy()
-        yearly_patents = pd.DataFrame()
-        summary_papers = summary_data.copy()
-        summary_patents = pd.DataFrame()
-    else:
+    # Year 존재 여부로 세부 분류
+    def safe_year_check(row):
+        year_val = row.get('Year', None)
+        if pd.isna(year_val):
+            return False
         try:
-            # 안전한 문자열 매칭
-            def is_paper(val):
-                if pd.isna(val):
-                    return False
-                val_str = str(val).lower()
-                return any(keyword in val_str for keyword in ['논문', 'paper', '1.'])
-            
-            def is_patent(val):
-                if pd.isna(val):
-                    return False
-                val_str = str(val).lower()
-                return any(keyword in val_str for keyword in ['특허', 'patent', '2.'])
-            
-            # 논문과 특허 데이터 분리
-            yearly_papers = yearly_data[yearly_data[category_col].apply(is_paper)].copy()
-            yearly_patents = yearly_data[yearly_data[category_col].apply(is_patent)].copy()
-            
-            summary_papers = summary_data[summary_data[category_col].apply(is_paper)].copy()
-            summary_patents = summary_data[summary_data[category_col].apply(is_patent)].copy()
-            
-            st.info(f"""
-            📊 **데이터 분류 완료:**
-            - 연도별 논문: {len(yearly_papers):,}행
-            - 연도별 특허: {len(yearly_patents):,}행  
-            - 통합 논문: {len(summary_papers):,}행
-            - 통합 특허: {len(summary_patents):,}행
-            """)
-            
-        except Exception as e:
-            st.error(f"데이터 분류 중 오류: {e}")
-            # 안전 모드
-            yearly_papers = yearly_data.copy()
-            yearly_patents = pd.DataFrame()
-            summary_papers = summary_data.copy()
-            summary_patents = pd.DataFrame()
+            year_int = int(float(year_val))
+            return 1990 <= year_int <= 2030
+        except (ValueError, TypeError):
+            return False
+    
+    # 논문 데이터 분류
+    if not papers_df.empty:
+        papers_df['has_valid_year'] = papers_df.apply(safe_year_check, axis=1)
+        yearly_papers = papers_df[papers_df['has_valid_year']].copy()
+        summary_papers = papers_df[~papers_df['has_valid_year']].copy()
+        
+        # 연도 데이터 정수 변환
+        if not yearly_papers.empty:
+            yearly_papers['Year'] = yearly_papers['Year'].apply(lambda x: int(float(x)) if pd.notna(x) else x)
+    else:
+        yearly_papers = pd.DataFrame()
+        summary_papers = pd.DataFrame()
+    
+    # 특허 데이터 분류
+    if not patents_df.empty:
+        patents_df['has_valid_year'] = patents_df.apply(safe_year_check, axis=1)
+        yearly_patents = patents_df[patents_df['has_valid_year']].copy()
+        summary_patents = patents_df[~patents_df['has_valid_year']].copy()
+        
+        # 연도 데이터 정수 변환
+        if not yearly_patents.empty:
+            yearly_patents['Year'] = yearly_patents['Year'].apply(lambda x: int(float(x)) if pd.notna(x) else x)
+    else:
+        yearly_patents = pd.DataFrame()
+        summary_patents = pd.DataFrame()
+    
+    # Label 정보 분석
+    if not papers_df.empty:
+        paper_labels = {
+            'Label_m': papers_df['Label_m'].unique(),
+            'Label_s': papers_df['Label_s'].unique()
+        }
+        st.info(f"📄 논문 Label_m 값: {sorted([x for x in paper_labels['Label_m'] if pd.notna(x)])}")
+        st.info(f"📄 논문 Label_s 값: {sorted([x for x in paper_labels['Label_s'] if pd.notna(x)])}")
+    
+    if not patents_df.empty:
+        patent_labels = {
+            'Label_m': patents_df['Label_m'].unique(),
+            'Label_s': patents_df['Label_s'].unique()
+        }
+        st.info(f"⚖️ 특허 Label_m 값: {sorted([x for x in patent_labels['Label_m'] if pd.notna(x)])}")
+        st.info(f"⚖️ 특허 Label_s 값: {sorted([x for x in patent_labels['Label_s'] if pd.notna(x)])}")
+    
+    # 최종 결과 표시
+    st.success(f"""
+    ✅ **데이터 분류 완료:**
+    - 연도별 논문: {len(yearly_papers):,}행
+    - 연도별 특허: {len(yearly_patents):,}행  
+    - 통합 논문: {len(summary_papers):,}행
+    - 통합 특허: {len(summary_patents):,}행
+    """)
     
     return {
-        'yearly_data': yearly_data,
-        'summary_data': summary_data,
         'yearly_papers': yearly_papers,
         'yearly_patents': yearly_patents,
         'summary_papers': summary_papers,
-        'summary_patents': summary_patents
+        'summary_patents': summary_patents,
+        'all_data': df
     }
 
 # KPI 메트릭 함수
