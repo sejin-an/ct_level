@@ -100,7 +100,12 @@ def render_paper_timeseries(papers_df):
             text=yearly_data[papers_col]
         )
         fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-        fig.update_layout(height=400)
+        fig.update_layout(
+            height=600,
+            font=dict(size=14),
+            title_font_size=18,
+            margin=dict(l=60, r=60, t=100, b=60)
+        )
         st.plotly_chart(fig, use_container_width=True)
         
         # 성장률 계산
@@ -153,7 +158,12 @@ def render_patent_timeseries(patents_df):
             color_discrete_sequence=['#FF6B6B']
         )
         fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-        fig.update_layout(height=400)
+        fig.update_layout(
+            height=600,
+            font=dict(size=14),
+            title_font_size=18,
+            margin=dict(l=60, r=60, t=100, b=60)
+        )
         st.plotly_chart(fig, use_container_width=True)
         
         # 성장률 계산

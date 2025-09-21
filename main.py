@@ -126,6 +126,7 @@ def render_research_quality_analysis(papers_df):
         # 상위 10개국 선정
         top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(10).index.tolist()
         
+        # 2x2 레이아웃
         col1, col2 = st.columns(2)
         
         with col1:
@@ -149,6 +150,25 @@ def render_research_quality_analysis(papers_df):
                     **CHART_CONFIG
                 )
                 st.plotly_chart(fig_stack, use_container_width=True)
+            
+            # 3. 국가별 누적 피인용 규모
+            if 'Total_Citations' in papers_df.columns:
+                papers_clean, valid_years = safe_get_year_data(papers_df)
+                
+                if valid_years and not papers_clean.empty:
+                    citation_data = papers_clean[papers_clean['Country'].isin(top_countries[:5])].groupby(['Year_numeric', 'Country'])['Total_Citations'].sum().reset_index()
+                    citation_data.columns = ['Year', 'Country', 'Total_Citations']
+                    
+                    fig_citation = px.line(
+                        citation_data,
+                        x='Year',
+                        y='Total_Citations',
+                        color='Country',
+                        title='국가별 연도별 총 피인용수',
+                        markers=True
+                    )
+                    fig_citation.update_layout(**CHART_CONFIG)
+                    st.plotly_chart(fig_citation, use_container_width=True)
         
         with col2:
             # 2. 최근5년/과거5년 Q1비율 비교
@@ -177,31 +197,8 @@ def render_research_quality_analysis(papers_df):
                     )
                     fig_comp.update_layout(xaxis_tickangle=-45, **CHART_CONFIG)
                     st.plotly_chart(fig_comp, use_container_width=True)
-        
-        col3, col4 = st.columns(2)
-        
-        with col3:
-            # 3. 국가별 누적 피인용 규모
-            if 'Total_Citations' in papers_df.columns:
-                papers_clean, valid_years = safe_get_year_data(papers_df)
-                
-                if valid_years and not papers_clean.empty:
-                    citation_data = papers_clean[papers_clean['Country'].isin(top_countries[:5])].groupby(['Year_numeric', 'Country'])['Total_Citations'].sum().reset_index()
-                    citation_data.columns = ['Year', 'Country', 'Total_Citations']
-                    
-                    fig_citation = px.line(
-                        citation_data,
-                        x='Year',
-                        y='Total_Citations',
-                        color='Country',
-                        title='국가별 연도별 총 피인용수',
-                        markers=True
-                    )
-                    fig_citation.update_layout(**CHART_CONFIG)
-                    st.plotly_chart(fig_citation, use_container_width=True)
-        
-        with col4:
-            # 4. H-Index와 Avg_mrnif 시계열
+            
+            # 4. H-Index 시계열
             if 'H_Index' in papers_df.columns:
                 papers_clean, valid_years = safe_get_year_data(papers_df)
                 
@@ -245,14 +242,15 @@ def render_innovation_analysis(patents_df):
         recent_years = sorted(valid_years)[-5:]
         past_years = sorted(valid_years)[-10:-5]
         
+        recent_data = patents_clean[patents_clean['Year_numeric'].isin(recent_years)]
+        past_data = patents_clean[patents_clean['Year_numeric'].isin(past_years)]
+        
+        # 2x2 레이아웃
         col1, col2 = st.columns(2)
         
         with col1:
             # 1. IP4 특허 수 비교
             if 'ip4_count' in patents_df.columns:
-                recent_data = patents_clean[patents_clean['Year_numeric'].isin(recent_years)]
-                past_data = patents_clean[patents_clean['Year_numeric'].isin(past_years)]
-                
                 recent_ip4 = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['ip4_count'].sum()
                 past_ip4 = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['ip4_count'].sum()
                 
@@ -268,6 +266,24 @@ def render_innovation_analysis(patents_df):
                 )
                 fig_ip4.update_layout(xaxis_tickangle=-45, **CHART_CONFIG)
                 st.plotly_chart(fig_ip4, use_container_width=True)
+            
+            # 3. 총 청구항 수 비교
+            if 'total_claims' in patents_df.columns:
+                recent_claims = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
+                past_claims = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
+                
+                claims_comparison = pd.DataFrame({
+                    '과거5년': past_claims,
+                    '최근5년': recent_claims
+                }).fillna(0)
+                
+                fig_claims = px.bar(
+                    claims_comparison,
+                    title='총 청구항 수 비교 (과거5년 vs 최근5년)',
+                    barmode='group'
+                )
+                fig_claims.update_layout(xaxis_tickangle=-45, **CHART_CONFIG)
+                st.plotly_chart(fig_claims, use_container_width=True)
         
         with col2:
             # 2. 특허 피인용수 비교
@@ -287,29 +303,7 @@ def render_innovation_analysis(patents_df):
                 )
                 fig_citations.update_layout(xaxis_tickangle=-45, **CHART_CONFIG)
                 st.plotly_chart(fig_citations, use_container_width=True)
-        
-        col3, col4 = st.columns(2)
-        
-        with col3:
-            # 3. 총 청구항 수 비교
-            if 'total_claims' in patents_df.columns:
-                recent_claims = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
-                past_claims = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
-                
-                claims_comparison = pd.DataFrame({
-                    '과거5년': past_claims,
-                    '최근5년': recent_claims
-                }).fillna(0)
-                
-                fig_claims = px.bar(
-                    claims_comparison,
-                    title='총 청구항 수 비교 (과거5년 vs 최근5년)',
-                    barmode='group'
-                )
-                fig_claims.update_layout(xaxis_tickangle=-45, **CHART_CONFIG)
-                st.plotly_chart(fig_claims, use_container_width=True)
-        
-        with col4:
+            
             # 4. 해외출원 강도 비교
             if 'foreign_filing_intensity' in patents_df.columns:
                 recent_foreign = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['foreign_filing_intensity'].mean()
