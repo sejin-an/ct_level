@@ -1,5 +1,5 @@
 """
-국가별 비교 분석 컴포넌트 (개선 버전)
+국가별 비교 분석 컴포넌트
 components/country.py
 """
 
@@ -18,8 +18,9 @@ def safe_get_column(df, keywords):
         return None
     
     for col in df.columns:
-        if any(keyword.lower() in col.lower() for keyword in keywords):
-            return col
+        for keyword in keywords:
+            if keyword.lower() in col.lower():
+                return col
     return None
 
 def safe_get_numeric_column(df, keywords):
@@ -28,12 +29,13 @@ def safe_get_numeric_column(df, keywords):
         return None
     
     for col in df.columns:
-        if any(keyword.lower() in col.lower() for keyword in keywords):
-            try:
-                pd.to_numeric(df[col], errors='coerce')
-                return col
-            except:
-                continue
+        for keyword in keywords:
+            if keyword.lower() in col.lower():
+                try:
+                    pd.to_numeric(df[col], errors='coerce')
+                    return col
+                except:
+                    continue
     return None
 
 def render_country_trends(papers_df: pd.DataFrame, patents_df: pd.DataFrame, top_n: int = 10):
@@ -81,7 +83,7 @@ def render_country_trends(papers_df: pd.DataFrame, patents_df: pd.DataFrame, top
         st.plotly_chart(fig, use_container_width=True)
         
         # 국가별 상세 분석
-        render_country_detailed_metrics(papers_df, top_countries, year_col, country_col, paper_col)
+        render_country_summary_stats(papers_df, top_countries, country_col, paper_col)
         
         return top_countries
         
@@ -89,45 +91,39 @@ def render_country_trends(papers_df: pd.DataFrame, patents_df: pd.DataFrame, top
         st.error(f"국가별 트렌드 분석 오류: {e}")
         return []
 
-def render_country_detailed_metrics(df, countries, year_col, country_col, paper_col):
-    """국가별 상세 메트릭"""
+def render_country_summary_stats(papers_df, countries, country_col, paper_col):
+    """국가별 요약 통계"""
     try:
-        st.subheader("📊 상위 국가 상세 지표")
+        if not countries:
+            return
         
-        # 5개씩 컬럼으로 표시
-        cols = st.columns(5)
+        st.subheader("📊 상위 국가 요약 통계")
         
-        for i, country in enumerate(countries[:10]):  # 최대 10개국
-            col_idx = i % 5
+        # 국가별 집계
+        country_stats = []
+        for country in countries[:10]:  # 최대 10개국
+            country_data = papers_df[papers_df[country_col] == country]
             
-            with cols[col_idx]:
-                country_data = df[df[country_col] == country]
+            if not country_data.empty:
+                total_count = country_data[paper_col].sum() if paper_col in country_data.columns else len(country_data)
+                year_range = (country_data['Year'].min(), country_data['Year'].max()) if 'Year' in country_data.columns else ('N/A', 'N/A')
+                active_years = country_data['Year'].nunique() if 'Year' in country_data.columns else 1
                 
-                if not country_data.empty:
-                    # 총량
-                    total_count = country_data[paper_col].sum() if paper_col in country_data.columns else len(country_data)
-                    
-                    # 연도별 데이터가 있으면 성장률 계산
-                    yearly_data = country_data.groupby(year_col)[paper_col].sum() if paper_col in country_data.columns else country_data.groupby(year_col).size()
-                    
-                    growth_rate = None
-                    if len(yearly_data) > 1:
-                        growth_rate = yearly_data.pct_change().mean() * 100
-                    
-                    st.metric(
-                        label=f"🌍 {country}",
-                        value=f"{total_count:,}",
-                        delta=f"{growth_rate:.1f}%" if growth_rate is not None else None,
-                        help="총 건수 및 평균 성장률"
-                    )
-                    
-                    # 새로운 행 시작
-                    if (i + 1) % 5 == 0 and i < len(countries) - 1:
-                        st.markdown("")  # 공간 추가
-                        cols = st.columns(5)  # 새로운 컬럼 생성
+                country_stats.append({
+                    '국가': country,
+                    '총_건수': total_count,
+                    '최초_연도': year_range[0],
+                    '최종_연도': year_range[1],
+                    '활동_연수': active_years,
+                    '연평균': total_count / active_years if active_years > 0 else 0
+                })
+        
+        if country_stats:
+            stats_df = pd.DataFrame(country_stats)
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
         
     except Exception as e:
-        st.warning(f"국가별 상세 메트릭 오류: {e}")
+        st.warning(f"국가별 요약 통계 오류: {e}")
 
 def render_country_detail_analysis(papers_df: pd.DataFrame, selected_countries: list):
     """선택 국가 상세 분석"""
@@ -154,29 +150,11 @@ def render_country_detail_analysis(papers_df: pd.DataFrame, selected_countries: 
             st.warning("선택된 국가의 데이터가 없습니다.")
             return
         
-        # 탭으로 구분된 분석
-        tab1, tab2, tab3 = st.tabs(["📈 시계열 추이", "📊 국가별 비교", "🏆 순위 분석"])
-        
-        with tab1:
-            render_selected_countries_timeseries(filtered_papers, year_col, country_col, paper_col)
-        
-        with tab2:
-            render_selected_countries_comparison(filtered_papers, country_col, paper_col)
-        
-        with tab3:
-            render_selected_countries_ranking(filtered_papers, country_col, paper_col, year_col)
-            
-    except Exception as e:
-        st.error(f"선택 국가 상세 분석 오류: {e}")
-
-def render_selected_countries_timeseries(df, year_col, country_col, paper_col):
-    """선택 국가 시계열 분석"""
-    try:
         # 연도별 추이
         if paper_col:
-            country_yearly = df.groupby([year_col, country_col])[paper_col].sum().reset_index()
+            country_yearly = filtered_papers.groupby([year_col, country_col])[paper_col].sum().reset_index()
         else:
-            country_yearly = df.groupby([year_col, country_col]).size().reset_index(name='Count')
+            country_yearly = filtered_papers.groupby([year_col, country_col]).size().reset_index(name='Count')
             paper_col = 'Count'
         
         fig = px.line(
@@ -184,97 +162,18 @@ def render_selected_countries_timeseries(df, year_col, country_col, paper_col):
             x=year_col,
             y=paper_col,
             color=country_col,
-            title='선택 국가 시계열 추이',
+            title='선택 국가 상세 트렌드',
             markers=True
         )
         fig.update_traces(line_width=3, marker_size=8)
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
         
-        # 연도별 상세 테이블
-        pivot_table = country_yearly.pivot(index=year_col, columns=country_col, values=paper_col).fillna(0)
-        st.subheader("📋 연도별 상세 데이터")
-        st.dataframe(pivot_table, use_container_width=True)
+        # 국가별 요약 통계
+        render_country_summary_stats(filtered_papers, selected_countries, country_col, paper_col)
         
     except Exception as e:
-        st.error(f"시계열 분석 오류: {e}")
-
-def render_selected_countries_comparison(df, country_col, paper_col):
-    """선택 국가 비교 분석"""
-    try:
-        # 국가별 총합 비교
-        if paper_col:
-            country_totals = df.groupby(country_col)[paper_col].sum().sort_values(ascending=True)
-        else:
-            country_totals = df[country_col].value_counts().sort_values(ascending=True)
-        
-        # 수평 막대 차트
-        fig = px.bar(
-            x=country_totals.values,
-            y=country_totals.index,
-            orientation='h',
-            title='국가별 총 건수 비교',
-            text=country_totals.values
-        )
-        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 파이 차트
-        fig_pie = px.pie(
-            values=country_totals.values,
-            names=country_totals.index,
-            title='국가별 비율'
-        )
-        fig_pie.update_layout(height=400)
-        st.plotly_chart(fig_pie, use_container_width=True)
-        
-    except Exception as e:
-        st.error(f"국가별 비교 분석 오류: {e}")
-
-def render_selected_countries_ranking(df, country_col, paper_col, year_col):
-    """선택 국가 순위 분석"""
-    try:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # 전체 순위
-            if paper_col:
-                country_ranking = df.groupby(country_col)[paper_col].sum().sort_values(ascending=False)
-            else:
-                country_ranking = df[country_col].value_counts()
-            
-            ranking_df = pd.DataFrame({
-                '순위': range(1, len(country_ranking) + 1),
-                '국가': country_ranking.index,
-                '건수': country_ranking.values
-            })
-            
-            st.subheader("📊 전체 순위")
-            st.dataframe(ranking_df, use_container_width=True, hide_index=True)
-        
-        with col2:
-            # 최근 연도 순위 (가장 최근 연도 기준)
-            if year_col in df.columns:
-                latest_year = df[year_col].max()
-                latest_data = df[df[year_col] == latest_year]
-                
-                if paper_col:
-                    latest_ranking = latest_data.groupby(country_col)[paper_col].sum().sort_values(ascending=False)
-                else:
-                    latest_ranking = latest_data[country_col].value_counts()
-                
-                latest_ranking_df = pd.DataFrame({
-                    '순위': range(1, len(latest_ranking) + 1),
-                    '국가': latest_ranking.index,
-                    '건수': latest_ranking.values
-                })
-                
-                st.subheader(f"📊 {latest_year}년 순위")
-                st.dataframe(latest_ranking_df, use_container_width=True, hide_index=True)
-        
-    except Exception as e:
-        st.error(f"순위 분석 오류: {e}")
+        st.error(f"선택 국가 상세 분석 오류: {e}")
 
 def render_country_comparison_matrix(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
     """국가별 비교 매트릭스"""
@@ -383,15 +282,6 @@ def render_quadrant_analysis(comp_df: pd.DataFrame):
             for quadrant in quadrant_counts.index:
                 countries = comp_df[comp_df['Quadrant'] == quadrant]['Country'].head(3).tolist()
                 st.write(f"- {quadrant}: {', '.join(countries)}")
-        
-        # 사분면별 파이 차트
-        fig = px.pie(
-            values=quadrant_counts.values,
-            names=quadrant_counts.index,
-            title="사분면별 국가 분포"
-        )
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
         st.warning(f"사분면 분석 오류: {e}")
@@ -624,13 +514,9 @@ def render_country_growth_analysis(papers_df: pd.DataFrame):
                 if years_span > 0 and first_year_count > 0:
                     cagr = ((last_year_count / first_year_count) ** (1/years_span) - 1) * 100
                     
-                    # 평균 성장률 (단순)
-                    avg_growth = yearly_counts.pct_change().mean() * 100
-                    
                     growth_data.append({
                         'Country': country,
                         'CAGR': cagr,
-                        'Avg_Growth': avg_growth,
                         'First_Year': yearly_counts.index[0],
                         'Last_Year': yearly_counts.index[-1],
                         'Growth_Period': years_span,
@@ -677,9 +563,8 @@ def render_country_growth_analysis(papers_df: pd.DataFrame):
             # 성장률 테이블
             display_growth = growth_df.copy()
             display_growth['CAGR'] = display_growth['CAGR'].round(2)
-            display_growth['Avg_Growth'] = display_growth['Avg_Growth'].round(2)
             display_growth.columns = [
-                '국가', 'CAGR(%)', '평균성장률(%)', '시작연도', 
+                '국가', 'CAGR(%)', '시작연도', 
                 '종료연도', '분석기간(년)', '최종건수'
             ]
             
@@ -706,7 +591,7 @@ def render_regional_analysis(papers_df: pd.DataFrame):
             st.warning("국가 컬럼을 찾을 수 없습니다.")
             return
         
-        # 지역 분류 매핑 (확장된 버전)
+        # 지역 분류 매핑
         region_mapping = {
             # 북미
             '미국': '북미', 'United States': '북미', 'US': '북미', 'USA': '북미',
@@ -721,23 +606,14 @@ def render_regional_analysis(papers_df: pd.DataFrame):
             '스페인': '유럽', 'Spain': '유럽', 'ES': '유럽',
             '네덜란드': '유럽', 'Netherlands': '유럽', 'NL': '유럽',
             '스위스': '유럽', 'Switzerland': '유럽', 'CH': '유럽',
-            '스웨덴': '유럽', 'Sweden': '유럽', 'SE': '유럽',
-            '노르웨이': '유럽', 'Norway': '유럽', 'NO': '유럽',
             'EU': '유럽', 'European Union': '유럽',
             
             # 아시아
             '중국': '아시아', 'China': '아시아', 'CN': '아시아',
             '일본': '아시아', 'Japan': '아시아', 'JP': '아시아',
-            '한국': '아시아', 'Korea': '아시아', 'KR': '아시아', '대한민국': '아시아', 'South Korea': '아시아',
+            '한국': '아시아', 'Korea': '아시아', 'KR': '아시아', '대한민국': '아시아',
             '인도': '아시아', 'India': '아시아', 'IN': '아시아',
             '싱가포르': '아시아', 'Singapore': '아시아', 'SG': '아시아',
-            '말레이시아': '아시아', 'Malaysia': '아시아', 'MY': '아시아',
-            '태국': '아시아', 'Thailand': '아시아', 'TH': '아시아',
-            '인도네시아': '아시아', 'Indonesia': '아시아', 'ID': '아시아',
-            '필리핀': '아시아', 'Philippines': '아시아', 'PH': '아시아',
-            '베트남': '아시아', 'Vietnam': '아시아', 'VN': '아시아',
-            '대만': '아시아', 'Taiwan': '아시아', 'TW': '아시아',
-            '홍콩': '아시아', 'Hong Kong': '아시아', 'HK': '아시아',
             
             # 오세아니아
             '호주': '오세아니아', 'Australia': '오세아니아', 'AU': '오세아니아',
@@ -746,16 +622,6 @@ def render_regional_analysis(papers_df: pd.DataFrame):
             # 남미
             '브라질': '남미', 'Brazil': '남미', 'BR': '남미',
             '아르헨티나': '남미', 'Argentina': '남미', 'AR': '남미',
-            '칠레': '남미', 'Chile': '남미', 'CL': '남미',
-            
-            # 중동
-            '이스라엘': '중동', 'Israel': '중동', 'IL': '중동',
-            '사우디아라비아': '중동', 'Saudi Arabia': '중동', 'SA': '중동',
-            '아랍에미리트': '중동', 'UAE': '중동', 'United Arab Emirates': '중동',
-            
-            # 아프리카
-            '남아프리카': '아프리카', 'South Africa': '아프리카', 'ZA': '아프리카',
-            '이집트': '아프리카', 'Egypt': '아프리카', 'EG': '아프리카'
         }
         
         # 지역 분류 적용
@@ -818,76 +684,8 @@ def render_regional_analysis(papers_df: pd.DataFrame):
             region_stats_df = pd.DataFrame(region_stats)
             st.dataframe(region_stats_df, use_container_width=True, hide_index=True)
             
-            # 시계열 분석 (연도 컬럼이 있는 경우)
-            year_col = safe_get_column(papers_df, ['year', '연도'])
-            if year_col:
-                render_regional_timeseries(papers_df_region, year_col, paper_col)
         else:
             st.info("지역별 분석을 위한 충분한 데이터가 없습니다.")
         
     except Exception as e:
         st.error(f"지역별 분석 오류: {e}")
-
-def render_regional_timeseries(df_region, year_col, paper_col):
-    """지역별 시계열 분석"""
-    try:
-        st.subheader("📈 지역별 시계열 추이")
-        
-        if paper_col:
-            regional_yearly = df_region.groupby([year_col, 'Region'])[paper_col].sum().reset_index()
-        else:
-            regional_yearly = df_region.groupby([year_col, 'Region']).size().reset_index(name='Count')
-            paper_col = 'Count'
-        
-        # 상위 5개 지역만 표시
-        top_regions = df_region.groupby('Region')[paper_col].sum().nlargest(5).index.tolist()
-        regional_yearly_filtered = regional_yearly[regional_yearly['Region'].isin(top_regions)]
-        
-        fig = px.line(
-            regional_yearly_filtered,
-            x=year_col,
-            y=paper_col,
-            color='Region',
-            title='주요 지역별 시계열 추이',
-            markers=True
-        )
-        fig.update_traces(line_width=3, marker_size=8)
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 지역별 성장률
-        growth_data = []
-        for region in top_regions:
-            region_data = regional_yearly_filtered[regional_yearly_filtered['Region'] == region]
-            if len(region_data) > 1:
-                region_data = region_data.sort_values(year_col)
-                growth_rate = region_data[paper_col].pct_change().mean() * 100
-                growth_data.append({'Region': region, 'Growth_Rate': growth_rate})
-        
-        if growth_data:
-            growth_df = pd.DataFrame(growth_data).sort_values('Growth_Rate', ascending=False)
-            
-            st.subheader("📊 지역별 평균 성장률")
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                fig = px.bar(
-                    growth_df,
-                    x='Region',
-                    y='Growth_Rate',
-                    title='지역별 평균 성장률 (%)',
-                    color='Growth_Rate',
-                    color_continuous_scale='RdYlGn',
-                    text='Growth_Rate'
-                )
-                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                fig.update_layout(height=300)
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                st.write("**성장률 순위:**")
-                for i, row in growth_df.iterrows():
-                    st.write(f"{growth_df.index.get_loc(i)+1}. {row['Region']}: {row['Growth_Rate']:.1f}%")
-        
-    except Exception as e:
-        st.warning(f"지역별 시계열 분석 오류: {e}")
