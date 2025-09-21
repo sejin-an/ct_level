@@ -458,49 +458,62 @@ def render_sidebar_controls(papers_df, patents_df):
     
     # 기술 분야 필터
     tech_filter = None
-    if papers_df is not None and 'label_m_title' in papers_df.columns:
+    if papers_df is not None and not papers_df.empty and 'label_m_title' in papers_df.columns:
         st.sidebar.subheader("🔬 기술 분야 필터")
         
-        tech_options = ['전체'] + sorted(papers_df['label_m_title'].unique())
-        selected_techs = st.sidebar.multiselect(
-            "분석 대상 기술 분야",
-            options=tech_options,
-            default=['전체'],
-            help="특정 기술 분야로 분석을 제한할 수 있습니다"
-        )
-        
-        if '전체' not in selected_techs and selected_techs:
-            tech_filter = selected_techs
-            st.sidebar.success(f"✅ 선택된 기술 분야: {len(selected_techs)}개")
+        try:
+            tech_options = ['전체'] + sorted(papers_df['label_m_title'].unique())
+            selected_techs = st.sidebar.multiselect(
+                "분석 대상 기술 분야",
+                options=tech_options,
+                default=['전체'],
+                help="특정 기술 분야로 분석을 제한할 수 있습니다"
+            )
+            
+            if '전체' not in selected_techs and selected_techs:
+                tech_filter = selected_techs
+                st.sidebar.success(f"✅ 선택된 기술 분야: {len(selected_techs)}개")
+        except Exception as e:
+            st.sidebar.error(f"기술 분야 필터 오류: {e}")
+    else:
+        st.sidebar.info("기술 분야 필터를 사용할 수 없습니다.")
     
     # 국가 그룹 선택
     country_filter = None
-    if papers_df is not None and 'Country' in papers_df.columns:
+    if papers_df is not None and not papers_df.empty and 'Country' in papers_df.columns:
         st.sidebar.subheader("🌍 국가 그룹")
         
-        # 주요국 자동 식별
-        top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(20).index.tolist()
-        
-        country_group = st.sidebar.selectbox(
-            "분석 대상 국가군",
-            ["전체 국가", "상위 10개국", "상위 20개국", "직접 선택"],
-            help="분석할 국가 범위를 설정하세요"
-        )
-        
-        if country_group == "상위 10개국":
-            country_filter = top_countries[:10]
-        elif country_group == "상위 20개국":
-            country_filter = top_countries[:20]
-        elif country_group == "직접 선택":
-            country_filter = st.sidebar.multiselect(
-                "분석 대상 국가",
-                options=top_countries,
-                default=top_countries[:5]
+        try:
+            # 주요국 자동 식별
+            if 'Total_Papers' in papers_df.columns:
+                top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(20).index.tolist()
+            else:
+                top_countries = papers_df['Country'].value_counts().head(20).index.tolist()
+            
+            country_group = st.sidebar.selectbox(
+                "분석 대상 국가군",
+                ["전체 국가", "상위 10개국", "상위 20개국", "직접 선택"],
+                help="분석할 국가 범위를 설정하세요"
             )
+            
+            if country_group == "상위 10개국":
+                country_filter = top_countries[:10]
+            elif country_group == "상위 20개국":
+                country_filter = top_countries[:20]
+            elif country_group == "직접 선택":
+                country_filter = st.sidebar.multiselect(
+                    "분석 대상 국가",
+                    options=top_countries,
+                    default=top_countries[:5]
+                )
+        except Exception as e:
+            st.sidebar.error(f"국가 필터 오류: {e}")
+    else:
+        st.sidebar.info("국가 필터를 사용할 수 없습니다.")
     
     # 시간 범위 설정
     time_filter = None
-    if papers_df is not None and 'Year' in papers_df.columns:
+    if papers_df is not None and not papers_df.empty and 'Year' in papers_df.columns:
         st.sidebar.subheader("📅 분석 기간")
         
         try:
@@ -524,6 +537,8 @@ def render_sidebar_controls(papers_df, patents_df):
                 st.sidebar.warning("유효한 연도 데이터가 없습니다.")
         except Exception as e:
             st.sidebar.error(f"연도 범위 설정 오류: {e}")
+    else:
+        st.sidebar.info("연도 필터를 사용할 수 없습니다.")
     
     return {
         'tech_filter': tech_filter,
@@ -538,31 +553,36 @@ def apply_data_filters(papers_df, patents_df, filters):
     
     try:
         # 기술 분야 필터
-        if filters['tech_filter'] and filtered_papers is not None:
+        if filters['tech_filter'] and filtered_papers is not None and 'label_m_title' in filtered_papers.columns:
             filtered_papers = filtered_papers[filtered_papers['label_m_title'].isin(filters['tech_filter'])]
-            if filtered_patents is not None:
+            if filtered_patents is not None and 'label_m_title' in filtered_patents.columns:
                 filtered_patents = filtered_patents[filtered_patents['label_m_title'].isin(filters['tech_filter'])]
         
         # 국가 필터
-        if filters['country_filter'] and filtered_papers is not None:
+        if filters['country_filter'] and filtered_papers is not None and 'Country' in filtered_papers.columns:
             filtered_papers = filtered_papers[filtered_papers['Country'].isin(filters['country_filter'])]
-            if filtered_patents is not None:
+            if filtered_patents is not None and 'Country' in filtered_patents.columns:
                 filtered_patents = filtered_patents[filtered_patents['Country'].isin(filters['country_filter'])]
         
         # 시간 필터
-        if filters['time_filter'] and filtered_papers is not None:
+        if filters['time_filter'] and filtered_papers is not None and 'Year' in filtered_papers.columns:
             start_year, end_year = filters['time_filter']
             papers_clean, _ = safe_get_year_data(filtered_papers)
-            filtered_papers = papers_clean[(papers_clean['Year_numeric'] >= start_year) & (papers_clean['Year_numeric'] <= end_year)]
+            if not papers_clean.empty:
+                filtered_papers = papers_clean[(papers_clean['Year_numeric'] >= start_year) & (papers_clean['Year_numeric'] <= end_year)]
             
-            if filtered_patents is not None:
+            if filtered_patents is not None and 'Year' in filtered_patents.columns:
                 patents_clean, _ = safe_get_year_data(filtered_patents)
-                filtered_patents = patents_clean[(patents_clean['Year_numeric'] >= start_year) & (patents_clean['Year_numeric'] <= end_year)]
+                if not patents_clean.empty:
+                    filtered_patents = patents_clean[(patents_clean['Year_numeric'] >= start_year) & (patents_clean['Year_numeric'] <= end_year)]
         
         return filtered_papers, filtered_patents
     
     except Exception as e:
         st.error(f"데이터 필터링 중 오류: {e}")
+        # 디버깅 정보
+        if papers_df is not None:
+            st.write("논문 데이터 컬럼:", list(papers_df.columns))
         return papers_df, patents_df
 
 def main():
@@ -584,23 +604,25 @@ def main():
     
     # 데이터 구조 디버깅 정보
     with st.expander("🔍 데이터 구조 확인"):
-        if papers_df is not None:
+        if papers_df is not None and not papers_df.empty:
             st.write("**논문 데이터 정보:**")
             st.write(f"- 행 수: {len(papers_df):,}")
             st.write(f"- 컬럼 수: {len(papers_df.columns)}")
             st.write(f"- 컬럼명: {list(papers_df.columns)}")
-            if len(papers_df) > 0:
-                st.write("**첫 3행 미리보기:**")
-                st.dataframe(papers_df.head(3))
+            st.write("**첫 3행 미리보기:**")
+            st.dataframe(papers_df.head(3))
+        else:
+            st.write("**논문 데이터: 없음 또는 비어있음**")
         
-        if patents_df is not None:
+        if patents_df is not None and not patents_df.empty:
             st.write("**특허 데이터 정보:**")
             st.write(f"- 행 수: {len(patents_df):,}")
             st.write(f"- 컬럼 수: {len(patents_df.columns)}")
             st.write(f"- 컬럼명: {list(patents_df.columns)}")
-            if len(patents_df) > 0:
-                st.write("**첫 3행 미리보기:**")
-                st.dataframe(patents_df.head(3))
+            st.write("**첫 3행 미리보기:**")
+            st.dataframe(patents_df.head(3))
+        else:
+            st.write("**특허 데이터: 없음 또는 비어있음**")
     
     if papers_df is None and patents_df is None:
         st.error("분석할 데이터가 없습니다. 데이터 파일을 확인해주세요.")
