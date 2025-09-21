@@ -208,69 +208,110 @@ def render_research_quality_analysis(papers_df):
         st.error(f"논문 질적지표 분석 오류: {e}")
 
 def render_innovation_analysis(patents_df):
-    """특허 혁신 분석"""
+    """특허의 질적지표 비교"""
     if patents_df is None or patents_df.empty:
         st.warning("특허 데이터가 없습니다.")
         return
     
-    st.subheader("💡 혁신 지표 분석")
+    st.subheader("💡 특허의 질적지표 비교")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Triadic 특허 비율
-        if 'triadic_count' in patents_df.columns:
-            try:
-                patents_clean, valid_years = safe_get_year_data(patents_df)
+    try:
+        # 상위 10개국 선정
+        top_countries = patents_df.groupby('Country')['Total_Papers'].sum().nlargest(10).index.tolist()
+        patents_clean, valid_years = safe_get_year_data(patents_df)
+        
+        if not valid_years or len(valid_years) < 10:
+            st.warning("충분한 연도 데이터가 없습니다.")
+            return
+        
+        recent_years = sorted(valid_years)[-5:]
+        past_years = sorted(valid_years)[-10:-5]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 1. IP4 특허 수 비교
+            if 'ip4_count' in patents_df.columns:
+                recent_data = patents_clean[patents_clean['Year_numeric'].isin(recent_years)]
+                past_data = patents_clean[patents_clean['Year_numeric'].isin(past_years)]
                 
-                if valid_years and not patents_clean.empty:
-                    import plotly.express as px
-                    yearly_patents = patents_clean.groupby('Year_numeric').agg({
-                        'Total_Papers': 'sum',
-                        'triadic_count': 'sum'
-                    }).reset_index()
-                    yearly_patents.columns = ['Year', 'Total_Papers', 'triadic_count']
-                    
-                    yearly_patents['Triadic_Ratio'] = (yearly_patents['triadic_count'] / yearly_patents['Total_Papers']) * 100
-                    
-                    fig_triadic = px.line(
-                        yearly_patents,
-                        x='Year',
-                        y='Triadic_Ratio',
-                        title='Triadic 특허 비율 추이',
-                        markers=True
-                    )
-                    fig_triadic.update_traces(line_width=3, marker_size=8)
-                    st.plotly_chart(fig_triadic, use_container_width=True)
-                else:
-                    st.warning("Triadic 특허 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"Triadic 특허 차트 오류: {e}")
-    
-    with col2:
-        # 특허 인용 분석
-        if 'total_citations' in patents_df.columns:
-            try:
-                patents_clean, valid_years = safe_get_year_data(patents_df)
+                recent_ip4 = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['ip4_count'].sum()
+                past_ip4 = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['ip4_count'].sum()
                 
-                if valid_years and not patents_clean.empty:
-                    import plotly.express as px
-                    citation_data = patents_clean.groupby('Year_numeric')['total_citations'].sum().reset_index()
-                    citation_data.columns = ['Year', 'total_citations']
-                    
-                    fig_citations = px.bar(
-                        citation_data,
-                        x='Year',
-                        y='total_citations',
-                        title='연도별 특허 피인용수',
-                        color='total_citations',
-                        color_continuous_scale='Viridis'
-                    )
-                    st.plotly_chart(fig_citations, use_container_width=True)
-                else:
-                    st.warning("특허 인용 데이터가 없습니다.")
-            except Exception as e:
-                st.error(f"특허 인용 차트 오류: {e}")
+                ip4_comparison = pd.DataFrame({
+                    '과거5년': past_ip4,
+                    '최근5년': recent_ip4
+                }).fillna(0)
+                
+                fig_ip4 = px.bar(
+                    ip4_comparison,
+                    title='IP4 특허 수 비교 (과거5년 vs 최근5년)',
+                    barmode='group'
+                )
+                fig_ip4.update_layout(height=400, xaxis_tickangle=-45)
+                st.plotly_chart(fig_ip4, use_container_width=True)
+        
+        with col2:
+            # 2. 특허 피인용수 비교
+            if 'total_citations' in patents_df.columns:
+                recent_citations = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['total_citations'].sum()
+                past_citations = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['total_citations'].sum()
+                
+                citations_comparison = pd.DataFrame({
+                    '과거5년': past_citations,
+                    '최근5년': recent_citations
+                }).fillna(0)
+                
+                fig_citations = px.bar(
+                    citations_comparison,
+                    title='특허 피인용수 비교 (과거5년 vs 최근5년)',
+                    barmode='group'
+                )
+                fig_citations.update_layout(height=400, xaxis_tickangle=-45)
+                st.plotly_chart(fig_citations, use_container_width=True)
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            # 3. 총 청구항 수 비교
+            if 'total_claims' in patents_df.columns:
+                recent_claims = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
+                past_claims = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['total_claims'].sum()
+                
+                claims_comparison = pd.DataFrame({
+                    '과거5년': past_claims,
+                    '최근5년': recent_claims
+                }).fillna(0)
+                
+                fig_claims = px.bar(
+                    claims_comparison,
+                    title='총 청구항 수 비교 (과거5년 vs 최근5년)',
+                    barmode='group'
+                )
+                fig_claims.update_layout(height=400, xaxis_tickangle=-45)
+                st.plotly_chart(fig_claims, use_container_width=True)
+        
+        with col4:
+            # 4. 해외출원 강도 비교
+            if 'foreign_filing_intensity' in patents_df.columns:
+                recent_foreign = recent_data[recent_data['Country'].isin(top_countries)].groupby('Country')['foreign_filing_intensity'].mean()
+                past_foreign = past_data[past_data['Country'].isin(top_countries)].groupby('Country')['foreign_filing_intensity'].mean()
+                
+                foreign_comparison = pd.DataFrame({
+                    '과거5년': past_foreign,
+                    '최근5년': recent_foreign
+                }).fillna(0)
+                
+                fig_foreign = px.bar(
+                    foreign_comparison,
+                    title='해외출원 강도 비교 (과거5년 vs 최근5년)',
+                    barmode='group'
+                )
+                fig_foreign.update_layout(height=400, xaxis_tickangle=-45)
+                st.plotly_chart(fig_foreign, use_container_width=True)
+    
+    except Exception as e:
+        st.error(f"특허 질적지표 분석 오류: {e}")
 
 def render_country_comparison(papers_df, patents_df):
     """국가별 비교"""
