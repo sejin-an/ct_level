@@ -324,14 +324,17 @@ def render_country_comparison(papers_df, patents_df):
         return
     
     try:
+        import plotly.express as px
+        
         # 상위 15개국
         top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(15)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            # 논문 수 순위 - 세로형 바차트 + 숫자 표기
-            import plotly.express as px
+            st.write("**📄 논문 성과**")
+            
+            # 논문 수 세로형 바차트
             fig_papers = px.bar(
                 x=top_countries.index,
                 y=top_countries.values,
@@ -340,31 +343,88 @@ def render_country_comparison(papers_df, patents_df):
                 text=top_countries.values
             )
             fig_papers.update_traces(texttemplate='%{text:,}', textposition='outside')
-            fig_papers.update_layout(height=500, xaxis_tickangle=-45)
+            fig_papers.update_layout(height=400, xaxis_tickangle=-45)
             st.plotly_chart(fig_papers, use_container_width=True)
+            
+            # 논문 품질 버블차트 (시계열 경로)
+            if all(col in papers_df.columns for col in ['Q1_Ratio(%)', 'Total_Citations']):
+                papers_clean, valid_years = safe_get_year_data(papers_df)
+                
+                if valid_years and not papers_clean.empty:
+                    bubble_data = papers_clean[papers_clean['Country'].isin(top_countries.index[:10])].groupby(['Year_numeric', 'Country']).agg({
+                        'Total_Papers': 'sum',
+                        'Q1_Ratio(%)': 'mean',
+                        'Total_Citations': 'sum'
+                    }).reset_index()
+                    bubble_data.columns = ['Year', 'Country', 'Total_Papers', 'Q1_Ratio', 'Total_Citations']
+                    
+                    fig_bubble = px.scatter(
+                        bubble_data,
+                        x='Total_Papers',
+                        y='Q1_Ratio',
+                        size='Total_Citations',
+                        color='Country',
+                        animation_frame='Year',
+                        title='논문 규모 vs 품질 (버블: 피인용수)',
+                        labels={'Total_Papers': '총 논문 수', 'Q1_Ratio': 'Q1 비율 (%)'},
+                        size_max=60
+                    )
+                    fig_bubble.update_layout(height=400)
+                    st.plotly_chart(fig_bubble, use_container_width=True)
         
         with col2:
-            # 국가별 연구 품질
-            if 'Q1_Ratio(%)' in papers_df.columns:
-                import plotly.express as px
-                country_quality = papers_df.groupby('Country').agg({
-                    'Total_Papers': 'sum',
-                    'Q1_Ratio(%)': 'mean'
-                }).reset_index()
+            st.write("**⚖️ 특허 성과**")
+            
+            if patents_df is not None and not patents_df.empty:
+                # 특허 수 세로형 바차트
+                top_patent_countries = patents_df.groupby('Country')['Total_Papers'].sum().nlargest(15)
                 
-                # 상위 15개국만
-                top_15_countries = top_countries.index.tolist()
-                country_quality_top = country_quality[country_quality['Country'].isin(top_15_countries)]
-                
-                fig_quality = px.scatter(
-                    country_quality_top,
-                    x='Total_Papers',
-                    y='Q1_Ratio(%)',
-                    hover_name='Country',
-                    title='국가별 논문 규모 vs 품질',
-                    labels={'Total_Papers': '총 논문 수', 'Q1_Ratio(%)': 'Q1 비율 (%)'}
+                fig_patents = px.bar(
+                    x=top_patent_countries.index,
+                    y=top_patent_countries.values,
+                    title='상위 15개국 특허 수',
+                    labels={'x': '국가', 'y': '특허 수'},
+                    text=top_patent_countries.values,
+                    color_discrete_sequence=['#FF6B6B']
                 )
-                st.plotly_chart(fig_quality, use_container_width=True)
+                fig_patents.update_traces(texttemplate='%{text:,}', textposition='outside')
+                fig_patents.update_layout(height=400, xaxis_tickangle=-45)
+                st.plotly_chart(fig_patents, use_container_width=True)
+                
+                # 특허 품질 버블차트 (시계열 경로)
+                if all(col in patents_df.columns for col in ['ip4_count', 'total_citations']):
+                    patents_clean, patent_years = safe_get_year_data(patents_df)
+                    
+                    if patent_years and not patents_clean.empty:
+                        patent_bubble_data = patents_clean[patents_clean['Country'].isin(top_patent_countries.index[:10])].groupby(['Year_numeric', 'Country']).agg({
+                            'Total_Papers': 'sum',
+                            'ip4_count': 'sum',
+                            'total_citations': 'sum'
+                        }).reset_index()
+                        patent_bubble_data.columns = ['Year', 'Country', 'Total_Patents', 'IP4_Count', 'Total_Citations']
+                        patent_bubble_data['IP4_Ratio'] = (patent_bubble_data['IP4_Count'] / patent_bubble_data['Total_Patents']) * 100
+                        
+                        fig_patent_bubble = px.scatter(
+                            patent_bubble_data,
+                            x='Total_Patents',
+                            y='IP4_Ratio',
+                            size='Total_Citations',
+                            color='Country',
+                            animation_frame='Year',
+                            title='특허 규모 vs IP4 비율 (버블: 피인용수)',
+                            labels={'Total_Patents': '총 특허 수', 'IP4_Ratio': 'IP4 비율 (%)'},
+                            size_max=60,
+                            color_discrete_sequence=px.colors.qualitative.Set2
+                        )
+                        fig_patent_bubble.update_layout(height=400)
+                        st.plotly_chart(fig_patent_bubble, use_container_width=True)
+                    else:
+                        st.warning("특허 시계열 데이터가 없습니다.")
+                else:
+                    st.warning("특허 품질 지표가 없습니다.")
+            else:
+                st.warning("특허 데이터가 없습니다.")
+    
     except Exception as e:
         st.error(f"국가별 비교 분석 오류: {e}")
 
