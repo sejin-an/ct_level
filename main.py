@@ -505,7 +505,7 @@ def main():
     
     # 4. 국가별 비교
     render_country_comparison(filtered_papers, filtered_patents)
-    st.markdown("---")
+        st.markdown("---")
     
     # 5. 국가별 트렌드 (직접 구현)
     render_country_trends_simple(filtered_papers, filtered_patents, top_n=10)
@@ -513,7 +513,7 @@ def main():
     
     # 6. 기술 분야 트렌드
     render_technology_trends(filtered_papers)
-    st.markdown("---")
+        st.markdown("---")
     
     # 7. 종합 순위
     render_comprehensive_ranking(filtered_papers, filtered_patents)
