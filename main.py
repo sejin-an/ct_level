@@ -168,9 +168,14 @@ def get_summary_stats(papers_df, patents_df):
     all_years = []
     for df in [papers_df, patents_df]:
         if df is not None and not df.empty:
-            structure = detect_data_structure(df)
-            if structure['has_timeseries']:
-                year_col = structure['time_columns'][0]
+            # 연도 컬럼 찾기
+            year_col = None
+            for col in df.columns:
+                if col.lower() in ['year', '연도']:
+                    year_col = col
+                    break
+            
+            if year_col:
                 years = pd.to_numeric(df[year_col], errors='coerce').dropna()
                 if not years.empty:
                     all_years.extend(years.tolist())
@@ -185,9 +190,14 @@ def get_summary_stats(papers_df, patents_df):
     all_countries = set()
     for df in [papers_df, patents_df]:
         if df is not None and not df.empty:
-            structure = detect_data_structure(df)
-            if structure['has_country']:
-                country_col = structure['country_columns'][0]
+            # 국가 컬럼 찾기
+            country_col = None
+            for col in df.columns:
+                if col.lower() in ['country', '국가', 'nation']:
+                    country_col = col
+                    break
+            
+            if country_col:
                 countries = df[country_col].dropna().unique()
                 all_countries.update(countries)
     
@@ -564,11 +574,22 @@ def render_label_country_analysis(papers_df, patents_df, label_m_values):
     if papers_df is not None and 'label_m' in papers_df.columns:
         paper_filtered = papers_df[papers_df['label_m'].isin(label_m_values)]
         if not paper_filtered.empty:
-            structure = detect_data_structure(paper_filtered)
-            if structure['has_country'] and structure['numeric_columns']:
-                country_col = structure['country_columns'][0]
-                main_col = structure['numeric_columns'][0]
-                paper_country = paper_filtered.groupby(country_col)[main_col].sum()
+            # 국가 컬럼 찾기
+            country_col = None
+            for col in paper_filtered.columns:
+                if col.lower() in ['country', '국가', 'nation']:
+                    country_col = col
+                    break
+            
+            # 수치 컬럼 찾기
+            numeric_col = None
+            for col in paper_filtered.columns:
+                if paper_filtered[col].dtype in ['int64', 'float64'] and col.lower() not in ['year', '연도', 'label_m', 'label_s']:
+                    numeric_col = col
+                    break
+            
+            if country_col and numeric_col:
+                paper_country = paper_filtered.groupby(country_col)[numeric_col].sum()
                 for country, value in paper_country.items():
                     all_data.append({'Country': country, 'Type': '논문', 'Value': value})
     
@@ -576,11 +597,22 @@ def render_label_country_analysis(papers_df, patents_df, label_m_values):
     if patents_df is not None and 'label_m' in patents_df.columns:
         patent_filtered = patents_df[patents_df['label_m'].isin(label_m_values)]
         if not patent_filtered.empty:
-            structure = detect_data_structure(patent_filtered)
-            if structure['has_country'] and structure['numeric_columns']:
-                country_col = structure['country_columns'][0]
-                main_col = structure['numeric_columns'][0]
-                patent_country = patent_filtered.groupby(country_col)[main_col].sum()
+            # 국가 컬럼 찾기
+            country_col = None
+            for col in patent_filtered.columns:
+                if col.lower() in ['country', '국가', 'nation']:
+                    country_col = col
+                    break
+            
+            # 수치 컬럼 찾기
+            numeric_col = None
+            for col in patent_filtered.columns:
+                if patent_filtered[col].dtype in ['int64', 'float64'] and col.lower() not in ['year', '연도', 'label_m', 'label_s']:
+                    numeric_col = col
+                    break
+            
+            if country_col and numeric_col:
+                patent_country = patent_filtered.groupby(country_col)[numeric_col].sum()
                 for country, value in patent_country.items():
                     all_data.append({'Country': country, 'Type': '특허', 'Value': value})
     
