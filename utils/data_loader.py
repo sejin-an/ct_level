@@ -267,18 +267,25 @@ class DataLoader:
                 year_range = (min_year, max_year)
             except (ValueError, TypeError):
                 year_range = None
-        
         # 국가 수 계산
         all_countries = set()
         if papers_df is not None and not papers_df.empty:
             country_col = find_country_column(papers_df)
-            if country_col:
-                all_countries.update(papers_df[country_col].dropna().unique())
+            if country_col and country_col in papers_df.columns:
+                try:
+                    countries = papers_df[country_col].dropna().unique()
+                    all_countries.update(countries)
+                except Exception:
+                    pass
         
         if patents_df is not None and not patents_df.empty:
             country_col = find_country_column(patents_df)
-            if country_col:
-                all_countries.update(patents_df[country_col].dropna().unique())
+            if country_col and country_col in patents_df.columns:
+                try:
+                    countries = patents_df[country_col].dropna().unique()
+                    all_countries.update(countries)
+                except Exception:
+                    pass
         
         country_count = len(all_countries)
         
