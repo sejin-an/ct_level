@@ -1,6 +1,6 @@
 """
 향상된 기술수준조사 전문가용 대시보드 - 메인
-main.py
+enhanced_main.py
 """
 
 import streamlit as st
@@ -26,19 +26,19 @@ st.set_page_config(
 try:
     from utils.data_loader import load_data, get_summary_stats
     
-    # 기존 컴포넌트
-    from components.metrics import render_summary_metrics
+    # 기존 컴포넌트 (함수명 수정)
+    from components.metrics import render_kpi_cards as render_summary_metrics
     from components.trends import render_basic_timeseries
     from components.country import render_country_trends
     
     # 향상된 컴포넌트
-    from components.metrics import (
+    from components.enhanced_metrics import (
         render_expert_summary_dashboard,
         render_quality_indicators_analysis,
         render_patent_innovation_analysis,
         render_comparative_benchmarking
     )
-    from components.trends import (
+    from components.enhanced_trends import (
         render_technology_evolution_timeline,
         render_predictive_trends_analysis,
         render_innovation_lifecycle_analysis,
@@ -46,7 +46,7 @@ try:
         render_emerging_technology_detection,
         render_technology_convergence_analysis
     )
-    from components.country import (
+    from components.enhanced_country import (
         render_global_competitiveness_dashboard,
         render_collaborative_network_analysis,
         render_emerging_countries_analysis,
@@ -56,7 +56,7 @@ try:
     IMPORTS_SUCCESSFUL = True
 except ImportError as e:
     st.error(f"모듈 import 오류: {e}")
-    st.info("metrics.py, trends.py, country.py 파일을 확인하세요.")
+    st.info("enhanced_metrics.py, enhanced_trends.py, enhanced_country.py 파일을 확인하세요.")
     IMPORTS_SUCCESSFUL = False
 
 # 스타일링
@@ -115,7 +115,7 @@ def load_and_process_data():
         st.sidebar.error(f"❌ 데이터 로드 실패: {e}")
         return None, None
 
-def render_sidebar_controls(papers_df, patents_df):
+def render_enhanced_sidebar_controls(papers_df, patents_df):
     """향상된 사이드바 컨트롤"""
     st.sidebar.markdown("""
     <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -660,7 +660,7 @@ def main():
     papers_df, patents_df = load_and_process_data()
     
     # 사이드바 컨트롤
-    filters = render_sidebar_controls(papers_df, patents_df)
+    filters = render_enhanced_sidebar_controls(papers_df, patents_df)
     
     # 데이터 필터링
     filtered_papers, filtered_patents = apply_data_filters(papers_df, patents_df, filters)
@@ -692,5 +692,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-    
