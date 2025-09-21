@@ -440,6 +440,7 @@ def render_technology_trends(papers_df):
         
         # 상위 15개 기술 분야
         top_techs = papers_df.groupby('label_s_title')['Total_Papers'].sum().nlargest(15)
+        top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(5)
         
         # 2x2 레이아웃
         col1, col2 = st.columns(2)
@@ -483,33 +484,22 @@ def render_technology_trends(papers_df):
                 
                 st.plotly_chart(fig_growth, use_container_width=True)
             
-            # 2. 기술 분야별 품질 지표 히트맵
-            if 'Q1_Ratio(%)' in papers_df.columns:
-                tech_quality = papers_df.groupby('label_s_title').agg({
-                    'Total_Papers': 'sum',
-                    'Q1_Ratio(%)': 'mean',
-                    'Avg_Citations': 'mean' if 'Avg_Citations' in papers_df.columns else lambda x: 0,
-                    'H_Index': 'mean' if 'H_Index' in papers_df.columns else lambda x: 0
-                }).round(2)
-                
-                top_tech_quality = tech_quality.nlargest(10, 'Total_Papers')
-                
-                # 정규화
-                normalized_data = top_tech_quality.copy()
-                for col in ['Total_Papers', 'Q1_Ratio(%)', 'Avg_Citations', 'H_Index']:
-                    if col in normalized_data.columns:
-                        max_val = normalized_data[col].max()
-                        if max_val > 0:
-                            normalized_data[col] = (normalized_data[col] / max_val) * 100
-                
-                fig_heatmap = px.imshow(
-                    normalized_data.T,
-                    title='기술분야별 품질지표 히트맵 (정규화)',
-                    color_continuous_scale='Viridis',
-                    aspect='auto'
-                )
-                fig_heatmap.update_layout(height=400)
-                st.plotly_chart(fig_heatmap, use_container_width=True)
+            # 2. 기술 분야별 국가 참여도 (상위 5개국)
+            tech_country_data = papers_df[
+                (papers_df['label_s_title'].isin(top_techs.head(10).index)) &
+                (papers_df['Country'].isin(top_countries.index))
+            ].groupby(['label_s_title', 'Country'])['Total_Papers'].sum().reset_index()
+            
+            fig_tech_country = px.bar(
+                tech_country_data,
+                x='label_s_title',
+                y='Total_Papers',
+                color='Country',
+                title='기술분야별 상위 5개국 참여도',
+                barmode='stack'
+            )
+            fig_tech_country.update_layout(height=400, xaxis_tickangle=-45)
+            st.plotly_chart(fig_tech_country, use_container_width=True)
         
         with col2:
             # 3. 기술 분야별 시계열 (상위 5개)
@@ -528,38 +518,45 @@ def render_technology_trends(papers_df):
                 fig_tech_trend.update_layout(height=400)
                 st.plotly_chart(fig_tech_trend, use_container_width=True)
             
-            # 4. 기술 분야 포트폴리오 (파이차트 + 트리맵)
-            fig_portfolio = make_subplots(
-                rows=1, cols=2,
-                specs=[[{"type": "pie"}, {"type": "treemap"}]],
-                subplot_titles=["비중 분포", "계층 구조"]
-            )
+            # 4. 국가별 기술 특화도 (RCA 기반)
+            tech_specialization = []
+            total_papers_by_country = papers_df.groupby('Country')['Total_Papers'].sum()
+            total_papers_by_tech = papers_df.groupby('label_s_title')['Total_Papers'].sum()
+            total_papers = papers_df['Total_Papers'].sum()
             
-            # 파이차트
-            top_10_techs = top_techs.head(10)
-            others_sum = papers_df[~papers_df['label_s_title'].isin(top_10_techs.index)]['Total_Papers'].sum()
+            for country in top_countries.index:
+                for tech in top_techs.head(10).index:
+                    country_tech_papers = papers_df[
+                        (papers_df['Country'] == country) & 
+                        (papers_df['label_s_title'] == tech)
+                    ]['Total_Papers'].sum()
+                    
+                    if country_tech_papers > 0:
+                        country_share = total_papers_by_country[country] / total_papers
+                        tech_share = total_papers_by_tech[tech] / total_papers
+                        actual_share = country_tech_papers / total_papers
+                        
+                        rca = actual_share / (country_share * tech_share) if (country_share * tech_share) > 0 else 0
+                        
+                        tech_specialization.append({
+                            'Country': country,
+                            'Technology': tech,
+                            'RCA': rca,
+                            'Papers': country_tech_papers
+                        })
             
-            pie_data = pd.concat([top_10_techs, pd.Series([others_sum], index=['기타'])])
-            
-            fig_pie = px.pie(values=pie_data.values, names=pie_data.index)
-            for trace in fig_pie.data:
-                fig_portfolio.add_trace(trace, row=1, col=1)
-            
-            # 트리맵은 단순화
-            if 'label_m_title' in papers_df.columns:
-                treemap_data = papers_df.groupby(['label_m_title', 'label_s_title'])['Total_Papers'].sum().reset_index()
-                treemap_data = treemap_data.nlargest(20, 'Total_Papers')
+            if tech_specialization:
+                spec_df = pd.DataFrame(tech_specialization)
+                spec_pivot = spec_df.pivot(index='Technology', columns='Country', values='RCA').fillna(0)
                 
-                fig_treemap = px.treemap(
-                    treemap_data,
-                    path=['label_m_title', 'label_s_title'],
-                    values='Total_Papers'
+                fig_spec = px.imshow(
+                    spec_pivot,
+                    title='국가별 기술 특화도 (RCA)',
+                    color_continuous_scale='RdYlBu_r',
+                    aspect='auto'
                 )
-                for trace in fig_treemap.data:
-                    fig_portfolio.add_trace(trace, row=1, col=2)
-            
-            fig_portfolio.update_layout(height=400, title_text="기술분야 포트폴리오")
-            st.plotly_chart(fig_portfolio, use_container_width=True)
+                fig_spec.update_layout(height=400)
+                st.plotly_chart(fig_spec, use_container_width=True)
         
         # 하단: 기술 분야별 상세 테이블
         st.subheader("📋 기술분야별 상세 통계")
