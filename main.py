@@ -455,10 +455,11 @@ def render_country_trends_simple(papers_df, patents_df, top_n=10):
                 y='Country',
                 orientation='h',
                 animation_frame='Year',
-                size='Total_Citations' if 'Total_Citations' in country_yearly.columns else None,
+                color='Total_Citations' if 'Total_Citations' in country_yearly.columns else 'Total_Papers',
                 title=f'상위 {top_n}개국 연도별 논문 수 순위 변화',
                 labels={'Total_Papers': '논문 수', 'Total_Citations': '피인용수'},
-                range_x=[0, country_yearly['Total_Papers'].max() * 1.1]
+                range_x=[0, country_yearly['Total_Papers'].max() * 1.1],
+                color_continuous_scale='Viridis'
             )
             
             fig.update_layout(
