@@ -101,10 +101,10 @@ def render_paper_timeseries(papers_df):
         )
         fig.update_traces(texttemplate='%{text:,}', textposition='outside')
         fig.update_layout(
-            height=600,
+            height=400,
             font=dict(size=14),
             title_font_size=18,
-            margin=dict(l=60, r=60, t=100, b=60)
+            margin=dict(l=60, r=60, t=80, b=60)
         )
         st.plotly_chart(fig, use_container_width=True)
         
@@ -159,10 +159,10 @@ def render_patent_timeseries(patents_df):
         )
         fig.update_traces(texttemplate='%{text:,}', textposition='outside')
         fig.update_layout(
-            height=600,
+            height=400,
             font=dict(size=14),
             title_font_size=18,
-            margin=dict(l=60, r=60, t=100, b=60)
+            margin=dict(l=60, r=60, t=80, b=60)
         )
         st.plotly_chart(fig, use_container_width=True)
         

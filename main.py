@@ -64,7 +64,7 @@ st.markdown("""
 
 # 공통 차트 스타일 설정
 CHART_CONFIG = {
-    'height': 550,
+    'height': 400,
     'font': dict(size=14),
     'title_font_size': 18,
     'margin': dict(l=60, r=60, t=80, b=60)
