@@ -281,7 +281,7 @@ def render_country_comparison(papers_df, patents_df):
 
 def render_technology_trends(papers_df):
     """기술 분야별 트렌드"""
-    if papers_df is None or papers_df.empty or 'label_m_title' not in papers_df.columns:
+    if papers_df is None or papers_df.empty or 'label_s_title' not in papers_df.columns:
         st.warning("기술 분야 분석을 위한 데이터가 없습니다.")
         return
     
@@ -289,7 +289,7 @@ def render_technology_trends(papers_df):
     
     try:
         # 상위 10개 기술 분야
-        top_techs = papers_df.groupby('label_m_title')['Total_Papers'].sum().nlargest(10)
+        top_techs = papers_df.groupby('label_s_title')['Total_Papers'].sum().nlargest(10)
         
         col1, col2 = st.columns(2)
         
@@ -313,14 +313,14 @@ def render_technology_trends(papers_df):
             if valid_years and not papers_clean.empty:
                 import plotly.express as px
                 top_5_techs = top_techs.head(5).index.tolist()
-                tech_yearly = papers_clean[papers_clean['label_m_title'].isin(top_5_techs)].groupby(['Year_numeric', 'label_m_title'])['Total_Papers'].sum().reset_index()
-                tech_yearly.columns = ['Year', 'label_m_title', 'Total_Papers']
+                tech_yearly = papers_clean[papers_clean['label_s_title'].isin(top_5_techs)].groupby(['Year_numeric', 'label_s_title'])['Total_Papers'].sum().reset_index()
+                tech_yearly.columns = ['Year', 'label_s_title', 'Total_Papers']
                 
                 fig_tech_trend = px.line(
                     tech_yearly,
                     x='Year',
                     y='Total_Papers',
-                    color='label_m_title',
+                    color='label_s_title',
                     title='주요 기술 분야 연도별 추이',
                     markers=True
                 )
@@ -458,11 +458,11 @@ def render_sidebar_controls(papers_df, patents_df):
     
     # 기술 분야 라디오 버튼으로 선택
     tech_filter = None
-    if papers_df is not None and not papers_df.empty and 'label_m_title' in papers_df.columns:
+    if papers_df is not None and not papers_df.empty and 'label_s_title' in papers_df.columns:
         st.sidebar.subheader("🔬 기술 분야")
         
         try:
-            tech_options = sorted(papers_df['label_m_title'].unique())
+            tech_options = sorted(papers_df['label_s_title'].unique())
             selected_tech = st.sidebar.radio(
                 "분석 대상 선택",
                 options=['전체'] + tech_options,
@@ -487,10 +487,10 @@ def apply_data_filters(papers_df, patents_df, filters):
     
     try:
         # 기술 분야 필터
-        if filters['tech_filter'] and filtered_papers is not None and 'label_m_title' in filtered_papers.columns:
-            filtered_papers = filtered_papers[filtered_papers['label_m_title'].isin(filters['tech_filter'])]
-            if filtered_patents is not None and 'label_m_title' in filtered_patents.columns:
-                filtered_patents = filtered_patents[filtered_patents['label_m_title'].isin(filters['tech_filter'])]
+        if filters['tech_filter'] and filtered_papers is not None and 'label_s_title' in filtered_papers.columns:
+            filtered_papers = filtered_papers[filtered_papers['label_s_title'].isin(filters['tech_filter'])]
+            if filtered_patents is not None and 'label_s_title' in filtered_patents.columns:
+                filtered_patents = filtered_patents[filtered_patents['label_s_title'].isin(filters['tech_filter'])]
         
         # 국가 필터
         if filters['country_filter'] and filtered_papers is not None and 'Country' in filtered_papers.columns:
