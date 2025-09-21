@@ -421,14 +421,16 @@ def render_technology_trends(papers_df):
         st.error(f"기술 분야 트렌드 분석 오류: {e}")
 
 def render_country_trends_simple(papers_df, patents_df, top_n=10):
-    """국가별 트렌드 분석 (간단 버전)"""
+    """국가별 연도별 순위 트렌드"""
     if papers_df is None or papers_df.empty:
         st.warning("국가별 트렌드 분석을 위한 데이터가 없습니다.")
         return
     
-    st.subheader("🌍 상위 국가별 시계열 트렌드")
+    st.subheader("🌍 상위 국가별 연도별 순위 트렌드")
     
     try:
+        import plotly.express as px
+        
         # 상위 국가 선택
         top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(top_n).index.tolist()
         
@@ -436,29 +438,47 @@ def render_country_trends_simple(papers_df, patents_df, top_n=10):
         papers_clean, valid_years = safe_get_year_data(papers_df)
         
         if valid_years and not papers_clean.empty:
-            # 연도별 국가별 데이터
-            country_yearly = papers_clean[papers_clean['Country'].isin(top_countries)].groupby(['Year_numeric', 'Country'])['Total_Papers'].sum().reset_index()
-            country_yearly.columns = ['Year', 'Country', 'Total_Papers']
+            # 연도별 국가별 데이터 (피인용수 포함)
+            country_yearly = papers_clean[papers_clean['Country'].isin(top_countries)].groupby(['Year_numeric', 'Country']).agg({
+                'Total_Papers': 'sum',
+                'Total_Citations': 'sum' if 'Total_Citations' in papers_clean.columns else lambda x: 0
+            }).reset_index()
+            country_yearly.columns = ['Year', 'Country', 'Total_Papers', 'Total_Citations']
             
-            import plotly.express as px
-            fig = px.line(
+            # 연도별 순위 계산
+            country_yearly['Rank'] = country_yearly.groupby('Year')['Total_Papers'].rank(method='dense', ascending=False)
+            
+            # 애니메이션 바 차트 (순위 기반)
+            fig = px.bar(
                 country_yearly,
-                x='Year',
-                y='Total_Papers',
-                color='Country',
-                title=f'상위 {top_n}개국 연도별 논문 수 추이',
-                markers=True
+                x='Total_Papers',
+                y='Country',
+                orientation='h',
+                animation_frame='Year',
+                size='Total_Citations' if 'Total_Citations' in country_yearly.columns else None,
+                title=f'상위 {top_n}개국 연도별 논문 수 순위 변화',
+                labels={'Total_Papers': '논문 수', 'Total_Citations': '피인용수'},
+                range_x=[0, country_yearly['Total_Papers'].max() * 1.1]
             )
-            fig.update_traces(line_width=2, marker_size=6)
-            fig.update_layout(height=500, legend=dict(orientation="h", yanchor="bottom", y=1.02))
+            
+            fig.update_layout(
+                height=600,
+                yaxis={'categoryorder': 'total ascending'},
+                showlegend=False
+            )
+            
+            # 애니메이션 속도 조정
+            fig.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = 1000
+            fig.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = 500
+            
             st.plotly_chart(fig, use_container_width=True)
             
             # 국가별 요약 통계
             st.subheader("📊 상위 국가 요약 통계")
             country_stats = papers_df[papers_df['Country'].isin(top_countries)].groupby('Country').agg({
                 'Total_Papers': 'sum',
-                'Q1_Ratio(%)': 'mean',
-                'Avg_Citations': 'mean'
+                'Q1_Ratio(%)': 'mean' if 'Q1_Ratio(%)' in papers_df.columns else lambda x: 0,
+                'Avg_Citations': 'mean' if 'Avg_Citations' in papers_df.columns else lambda x: 0
             }).round(2)
             country_stats = country_stats.sort_values('Total_Papers', ascending=False)
             country_stats.insert(0, '순위', range(1, len(country_stats) + 1))
