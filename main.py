@@ -447,103 +447,39 @@ def render_comprehensive_ranking(papers_df, patents_df):
             st.write("특허 데이터 컬럼:", list(patents_df.columns))
 
 def render_sidebar_controls(papers_df, patents_df):
-    """사이드바 컨트롤"""
+    """사이드바 컨트롤 (단순화)"""
     st.sidebar.markdown("""
     <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                 border-radius: 10px; color: white; margin-bottom: 1rem;'>
-        <h2>🎯 전문가 분석 설정</h2>
-        <p>기술수준조사 평가자료</p>
+        <h2>🎯 기술수준조사</h2>
+        <p>평가자료 분석</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # 기술 분야 필터
+    # 기술 분야 필터만 유지
     tech_filter = None
     if papers_df is not None and not papers_df.empty and 'label_m_title' in papers_df.columns:
-        st.sidebar.subheader("🔬 기술 분야 필터")
+        st.sidebar.subheader("🔬 기술 분야 선택")
         
         try:
-            tech_options = ['전체'] + sorted(papers_df['label_m_title'].unique())
-            selected_techs = st.sidebar.multiselect(
+            tech_options = sorted(papers_df['label_m_title'].unique())
+            selected_tech = st.sidebar.selectbox(
                 "분석 대상 기술 분야",
-                options=tech_options,
-                default=['전체'],
-                help="특정 기술 분야로 분석을 제한할 수 있습니다"
+                options=['전체'] + tech_options,
+                index=0,
+                help="분석할 기술 분야를 선택하세요"
             )
             
-            if '전체' not in selected_techs and selected_techs:
-                tech_filter = selected_techs
-                st.sidebar.success(f"✅ 선택된 기술 분야: {len(selected_techs)}개")
+            if selected_tech != '전체':
+                tech_filter = [selected_tech]
+                st.sidebar.success(f"✅ 선택: {selected_tech}")
         except Exception as e:
-            st.sidebar.error(f"기술 분야 필터 오류: {e}")
-    else:
-        st.sidebar.info("기술 분야 필터를 사용할 수 없습니다.")
-    
-    # 국가 그룹 선택
-    country_filter = None
-    if papers_df is not None and not papers_df.empty and 'Country' in papers_df.columns:
-        st.sidebar.subheader("🌍 국가 그룹")
-        
-        try:
-            # 주요국 자동 식별
-            if 'Total_Papers' in papers_df.columns:
-                top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(20).index.tolist()
-            else:
-                top_countries = papers_df['Country'].value_counts().head(20).index.tolist()
-            
-            country_group = st.sidebar.selectbox(
-                "분석 대상 국가군",
-                ["전체 국가", "상위 10개국", "상위 20개국", "직접 선택"],
-                help="분석할 국가 범위를 설정하세요"
-            )
-            
-            if country_group == "상위 10개국":
-                country_filter = top_countries[:10]
-            elif country_group == "상위 20개국":
-                country_filter = top_countries[:20]
-            elif country_group == "직접 선택":
-                country_filter = st.sidebar.multiselect(
-                    "분석 대상 국가",
-                    options=top_countries,
-                    default=top_countries[:5]
-                )
-        except Exception as e:
-            st.sidebar.error(f"국가 필터 오류: {e}")
-    else:
-        st.sidebar.info("국가 필터를 사용할 수 없습니다.")
-    
-    # 시간 범위 설정
-    time_filter = None
-    if papers_df is not None and not papers_df.empty and 'Year' in papers_df.columns:
-        st.sidebar.subheader("📅 분석 기간")
-        
-        try:
-            papers_clean, valid_years = safe_get_year_data(papers_df)
-            
-            if valid_years:
-                min_year = int(min(valid_years))
-                max_year = int(max(valid_years))
-                
-                time_range = st.sidebar.slider(
-                    "연도 범위",
-                    min_value=min_year,
-                    max_value=max_year,
-                    value=(min_year, max_year),
-                    help="분석할 시간 범위를 설정하세요"
-                )
-                
-                if time_range != (min_year, max_year):
-                    time_filter = time_range
-            else:
-                st.sidebar.warning("유효한 연도 데이터가 없습니다.")
-        except Exception as e:
-            st.sidebar.error(f"연도 범위 설정 오류: {e}")
-    else:
-        st.sidebar.info("연도 필터를 사용할 수 없습니다.")
+            st.sidebar.error(f"기술 분야 로드 오류: {e}")
     
     return {
         'tech_filter': tech_filter,
-        'country_filter': country_filter,
-        'time_filter': time_filter
+        'country_filter': None,
+        'time_filter': None
     }
 
 def apply_data_filters(papers_df, patents_df, filters):
@@ -637,12 +573,9 @@ def main():
     # 요약 통계
     summary_stats = get_summary_stats(filtered_papers, filtered_patents)
     
-    # 필터 적용 현황 표시
-    if any([filters['tech_filter'], filters['country_filter'], filters['time_filter']]):
-        st.info("🔍 **활성 필터**: " + 
-               (f"기술분야 {len(filters['tech_filter'])}개 " if filters['tech_filter'] else "") +
-               (f"국가 {len(filters['country_filter'])}개 " if filters['country_filter'] else "") +
-               (f"기간 {filters['time_filter'][0]}-{filters['time_filter'][1]}년 " if filters['time_filter'] else ""))
+    # 필터 적용 현황 표시 (기술 분야만)
+    if filters['tech_filter']:
+        st.info(f"🔬 **선택된 기술 분야**: {filters['tech_filter'][0]}")
     
     # 1. 요약 메트릭
     render_summary_metrics(summary_stats)
