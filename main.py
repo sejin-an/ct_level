@@ -25,24 +25,76 @@ st.set_page_config(
 def load_data():
     """엑셀 파일에서 데이터 로드"""
     try:
-        # 실제 파일명에 맞게 수정
-        df = pd.read_excel('_통합평가자료.xlsx', sheet_name='Sheet4')
+        # 여러 가지 방법으로 시도
+        try:
+            # 방법 1: 기본 pandas 읽기
+            df = pd.read_excel('_통합평가자료.xlsx')
+            st.success("✅ pandas 기본 방법으로 데이터 로드 성공")
+        except Exception as e1:
+            try:
+                # 방법 2: 시트명 지정
+                df = pd.read_excel('_통합평가자료.xlsx', sheet_name='Sheet4')
+                st.success("✅ 시트명 지정으로 데이터 로드 성공")
+            except Exception as e2:
+                try:
+                    # 방법 3: 엔진 지정
+                    df = pd.read_excel('_통합평가자료.xlsx', sheet_name=0, engine='openpyxl')
+                    st.success("✅ openpyxl 엔진으로 데이터 로드 성공")
+                except Exception as e3:
+                    st.error(f"모든 방법 실패:")
+                    st.error(f"방법1: {e1}")
+                    st.error(f"방법2: {e2}")
+                    st.error(f"방법3: {e3}")
+                    return pd.DataFrame()
         
         # 컬럼명 정리
         df.columns = df.columns.str.strip()
         
-        # Year가 null인 행 제거
-        df = df.dropna(subset=['Year'])
+        # 기본 정보 표시
+        st.info(f"데이터 로드 완료: {len(df)}행, {len(df.columns)}열")
         
         return df
+        
     except Exception as e:
         st.error(f"데이터 로드 오류: {e}")
+        st.info("파일 경로를 확인하고 다음을 시도해보세요:")
+        st.code("""
+        # 현재 디렉토리 확인
+        import os
+        print("현재 디렉토리:", os.getcwd())
+        print("파일 목록:", os.listdir('.'))
+        """)
         return pd.DataFrame()
 
 # 데이터 전처리 함수
 def preprocess_data(df):
     """데이터 전처리"""
+    if df.empty:
+        return {
+            'yearly_data': pd.DataFrame(),
+            'summary_data': pd.DataFrame(),
+            'yearly_papers': pd.DataFrame(),
+            'yearly_patents': pd.DataFrame(),
+            'summary_papers': pd.DataFrame(),
+            'summary_patents': pd.DataFrame()
+        }
+    
     df = df.copy()
+    
+    # Year 컬럼이 존재하는지 확인
+    if 'Year' not in df.columns:
+        st.warning("'Year' 컬럼을 찾을 수 없습니다. 첫 번째 숫자 컬럼을 사용합니다.")
+        # 숫자 컬럼 중에서 연도처럼 보이는 것을 찾기
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            unique_vals = df[col].dropna().unique()
+            if len(unique_vals) <= 5 and all(2000 <= val <= 2030 for val in unique_vals if isinstance(val, (int, float))):
+                df['Year'] = df[col]
+                st.info(f"'{col}' 컬럼을 Year로 사용합니다.")
+                break
+        else:
+            # Year 컬럼을 생성할 수 없는 경우
+            df['Year'] = np.nan
     
     # Year가 있는 데이터와 없는 데이터 분리
     yearly_data = df[df['Year'].notna()].copy()
@@ -52,12 +104,29 @@ def preprocess_data(df):
     if not yearly_data.empty:
         yearly_data['Year'] = yearly_data['Year'].astype(int)
     
-    # 논문과 특허 데이터 분리
-    yearly_papers = yearly_data[yearly_data['구분'] == '1. 논문'].copy() if not yearly_data.empty else pd.DataFrame()
-    yearly_patents = yearly_data[yearly_data['구분'] == '2. 특허'].copy() if not yearly_data.empty else pd.DataFrame()
+    # 구분 컬럼 확인
+    category_col = None
+    for col in ['구분', '분류', 'Category', 'Type']:
+        if col in df.columns:
+            category_col = col
+            break
     
-    summary_papers = summary_data[summary_data['구분'] == '1. 논문'].copy() if not summary_data.empty else pd.DataFrame()
-    summary_patents = summary_data[summary_data['구분'] == '2. 특허'].copy() if not summary_data.empty else pd.DataFrame()
+    if category_col is None:
+        st.warning("구분 컬럼을 찾을 수 없습니다. 모든 데이터를 논문으로 처리합니다.")
+        yearly_papers = yearly_data.copy()
+        yearly_patents = pd.DataFrame()
+        summary_papers = summary_data.copy()
+        summary_patents = pd.DataFrame()
+    else:
+        # 논문과 특허 데이터 분리
+        paper_keywords = ['논문', 'paper', '1.']
+        patent_keywords = ['특허', 'patent', '2.']
+        
+        yearly_papers = yearly_data[yearly_data[category_col].astype(str).str.contains('|'.join(paper_keywords), case=False, na=False)].copy()
+        yearly_patents = yearly_data[yearly_data[category_col].astype(str).str.contains('|'.join(patent_keywords), case=False, na=False)].copy()
+        
+        summary_papers = summary_data[summary_data[category_col].astype(str).str.contains('|'.join(paper_keywords), case=False, na=False)].copy()
+        summary_patents = summary_data[summary_data[category_col].astype(str).str.contains('|'.join(patent_keywords), case=False, na=False)].copy()
     
     return {
         'yearly_data': yearly_data,
