@@ -9,6 +9,13 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+# 페이지 설정을 가장 먼저
+st.set_page_config(
+    page_title="기술수준조사 시계열 대시보드",
+    page_icon="📈",
+    layout="wide"
+)
+
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,12 +30,11 @@ try:
         render_data_quality_metrics
     )
     from components.trends import (
-        render_basic_timeseries,
-        render_combined_timeseries,
-        render_cumulative_trends,
+        render_yearly_trends_comprehensive,
         render_growth_rate_analysis,
-        render_trend_comparison,
-        render_forecast_trend
+        render_correlation_analysis,
+        render_seasonal_analysis,
+        render_forecasting
     )
     from components.country import (
         render_country_trends,
@@ -48,13 +54,6 @@ except ImportError as e:
     components/country.py
     """)
     st.stop()
-
-# 페이지 설정
-st.set_page_config(
-    page_title="기술수준조사 시계열 대시보드",
-    page_icon="📈",
-    layout="wide"
-)
 
 def render_sidebar_controls(papers_df, patents_df):
     """사이드바 컨트롤 렌더링"""
@@ -130,72 +129,6 @@ def render_sidebar_controls(papers_df, patents_df):
         'analysis_mode': analysis_mode
     }
 
-def main():
-    # 제목
-    st.title("📈 기술수준조사 시계열 대시보드")
-    st.caption("논문 및 특허 데이터의 시계열 분석 전문 대시보드")
-    st.markdown("---")
-    
-    # 데이터 로더 초기화
-    loader = DataLoader()
-    
-    # 초기 설정을 위한 임시 사이드바
-    st.sidebar.title("🔧 로딩 설정")
-    temp_sample_size = st.sidebar.selectbox(
-        "초기 로딩 크기",
-        [1000, 5000, 10000, "전체"],
-        index=1,
-        help="처음 로딩할 데이터 크기"
-    )
-    
-    # 데이터 로드
-    with st.spinner("데이터 로딩 중..."):
-        df = loader.load_data(temp_sample_size)
-    
-    if df.empty:
-        st.error("❌ 데이터를 로드할 수 없습니다.")
-        st.info("💡 '_통합평가자료.xlsx' 파일이 올바른 위치에 있는지 확인하세요.")
-        return
-    
-    # 데이터 전처리
-    papers_df, patents_df = loader.preprocess_data(df)
-    summary = loader.get_summary_stats(papers_df, patents_df)
-    
-    # 사이드바 컨트롤
-    controls = render_sidebar_controls(papers_df, patents_df)
-    
-    # 데이터 필터링
-    if controls['year_range']:
-        papers_df, patents_df = loader.filter_data_by_years(
-            papers_df, patents_df, controls['year_range']
-        )
-    
-    if controls['selected_countries']:
-        papers_df, patents_df = loader.filter_data_by_countries(
-            papers_df, patents_df, controls['selected_countries']
-        )
-    
-    # 필터링 후 요약 정보 업데이트
-    filtered_summary = loader.get_summary_stats(papers_df, patents_df)
-    
-    # 메인 콘텐츠 렌더링
-    analysis_mode = controls['analysis_mode']
-    
-    if analysis_mode == "📊 전체 대시보드":
-        render_full_dashboard(papers_df, patents_df, filtered_summary, controls)
-        
-    elif analysis_mode == "📈 트렌드 분석":
-        render_trend_dashboard(papers_df, patents_df)
-        
-    elif analysis_mode == "🌍 국가별 분석":
-        render_country_dashboard(papers_df, patents_df, controls)
-        
-    else:  # 상세 분석
-        render_detailed_dashboard(papers_df, patents_df, filtered_summary)
-    
-    # 사이드바 요약 정보
-    render_sidebar_summary(filtered_summary, controls)
-
 def render_full_dashboard(papers_df, patents_df, summary, controls):
     """전체 대시보드 렌더링"""
     # 1. 요약 메트릭
@@ -206,8 +139,8 @@ def render_full_dashboard(papers_df, patents_df, summary, controls):
     render_yearly_metrics(papers_df, patents_df)
     st.markdown("---")
     
-    # 3. 기본 시계열
-    render_basic_timeseries(papers_df, patents_df)
+    # 3. 종합 시계열 트렌드
+    render_yearly_trends_comprehensive(papers_df, patents_df)
     st.markdown("---")
     
     # 4. 상위 국가 정보
@@ -224,22 +157,20 @@ def render_trend_dashboard(papers_df, patents_df):
     # 트렌드 분석 옵션
     trend_option = st.selectbox(
         "트렌드 분석 유형",
-        ["기본 시계열", "통합 비교", "누적 추이", "성장률 분석", "상관관계", "예측 분석"],
+        ["종합 트렌드", "성장률 분석", "상관관계 분석", "패턴 분석", "예측 분석"],
         index=0
     )
     
-    if trend_option == "기본 시계열":
-        render_basic_timeseries(papers_df, patents_df)
-    elif trend_option == "통합 비교":
-        render_combined_timeseries(papers_df, patents_df)
-    elif trend_option == "누적 추이":
-        render_cumulative_trends(papers_df, patents_df)
+    if trend_option == "종합 트렌드":
+        render_yearly_trends_comprehensive(papers_df, patents_df)
     elif trend_option == "성장률 분석":
         render_growth_rate_analysis(papers_df, patents_df)
-    elif trend_option == "상관관계":
-        render_trend_comparison(papers_df, patents_df)
+    elif trend_option == "상관관계 분석":
+        render_correlation_analysis(papers_df, patents_df)
+    elif trend_option == "패턴 분석":
+        render_seasonal_analysis(papers_df, patents_df)
     else:  # 예측 분석
-        render_forecast_trend(papers_df, patents_df)
+        render_forecasting(papers_df, patents_df)
 
 def render_country_dashboard(papers_df, patents_df, controls):
     """국가별 분석 대시보드"""
@@ -386,151 +317,71 @@ def render_sidebar_summary(summary, controls):
     if summary['year_range']:
         st.sidebar.success(f"📅 분석 기간: {summary['year_range'][0]}-{summary['year_range'][1]}년")
 
-if __name__ == "__main__":
-    main()
+def main():
+    # 제목
+    st.title("📈 기술수준조사 시계열 대시보드")
+    st.caption("논문 및 특허 데이터의 시계열 분석 전문 대시보드")
     st.markdown("---")
     
-    # 탭 구성
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📄 논문 상세", 
-        "⚖️ 특허 상세", 
-        "📊 통계 분석", 
-        "📋 원본 데이터"
-    ])
+    # 데이터 로더 초기화
+    loader = DataLoader()
     
-    with tab1:
-        if not filtered_papers.empty:
-            st.subheader("논문 데이터 상세 분석")
-            
-            # 주요 컬럼 선택하여 표시
-            paper_cols = ['Year', 'Country', 'Total_Papers', 'H_Index', 'Q1_Ratio(%)', 
-                         'Collaboration_Ratio(%)', 'Avg_Citations', 'Avg_mrnif']
-            available_paper_cols = [col for col in paper_cols if col in filtered_papers.columns]
-            
-            if available_paper_cols:
-                st.dataframe(filtered_papers[available_paper_cols], use_container_width=True)
-                
-                # 다운로드
-                csv = filtered_papers[available_paper_cols].to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label="📥 논문 데이터 다운로드",
-                    data=csv,
-                    file_name='papers_detailed.csv',
-                    mime='text/csv'
-                )
-        else:
-            st.info("논문 데이터가 없습니다.")
-    
-    with tab2:
-        if not filtered_patents.empty:
-            st.subheader("특허 데이터 상세 분석")
-            
-            # 특허 관련 주요 컬럼
-            patent_cols = ['Year', 'Country', 'patent_count', 'triadic_ratio', 
-                          'claims_per_patent', 'foreign_filing_intensity', 'h_index']
-            available_patent_cols = [col for col in patent_cols if col in filtered_patents.columns]
-            
-            if available_patent_cols:
-                st.dataframe(filtered_patents[available_patent_cols], use_container_width=True)
-                
-                # 다운로드
-                csv = filtered_patents[available_patent_cols].to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label="📥 특허 데이터 다운로드",
-                    data=csv,
-                    file_name='patents_detailed.csv',
-                    mime='text/csv'
-                )
-            else:
-                st.dataframe(filtered_patents, use_container_width=True)
-        else:
-            st.info("특허 데이터가 없습니다.")
-    
-    with tab3:
-        st.subheader("📊 기술통계")
-        
-        # 기본 통계
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if not filtered_papers.empty:
-                st.write("**논문 데이터 기술통계**")
-                numeric_cols = filtered_papers.select_dtypes(include=['number']).columns
-                if len(numeric_cols) > 0:
-                    st.dataframe(filtered_papers[numeric_cols].describe())
-        
-        with col2:
-            if not filtered_patents.empty:
-                st.write("**특허 데이터 기술통계**")
-                numeric_cols = filtered_patents.select_dtypes(include=['number']).columns
-                if len(numeric_cols) > 0:
-                    st.dataframe(filtered_patents[numeric_cols].describe())
-    
-    with tab4:
-        st.subheader("📋 원본 데이터")
-        st.dataframe(filtered_df, use_container_width=True)
-        
-        # 전체 데이터 다운로드
-        csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 전체 데이터 다운로드",
-            data=csv,
-            file_name='complete_data.csv',
-            mime='text/csv'
-        )
-
-def main():
-    """메인 애플리케이션"""
-    # 데이터 로드
-    try:
-        df, papers_df, patents_df = load_and_preprocess_data()
-    except Exception as e:
-        st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
-        st.info("엑셀 파일 '_통합평가자료.xlsx'가 현재 디렉토리에 있는지 확인해주세요.")
-        return
-    
-    if df.empty:
-        st.error("데이터를 로드할 수 없습니다. 엑셀 파일을 확인해주세요.")
-        return
-    
-    # 사이드바 필터
-    filters, filtered_df, filtered_papers, filtered_patents = render_sidebar_filters(
-        df, papers_df, patents_df
+    # 초기 설정을 위한 임시 사이드바
+    st.sidebar.title("🔧 로딩 설정")
+    temp_sample_size = st.sidebar.selectbox(
+        "초기 로딩 크기",
+        [1000, 5000, 10000, "전체"],
+        index=1,
+        help="처음 로딩할 데이터 크기"
     )
     
-    if not filters:
+    # 데이터 로드
+    with st.spinner("데이터 로딩 중..."):
+        df = loader.load_data(temp_sample_size)
+    
+    if df.empty:
+        st.error("❌ 데이터를 로드할 수 없습니다.")
+        st.info("💡 '_통합평가자료.xlsx' 파일이 올바른 위치에 있는지 확인하세요.")
         return
     
-    # 분석 유형에 따른 페이지 렌더링
-    analysis_type = filters['analysis_type']
+    # 데이터 전처리
+    papers_df, patents_df = loader.preprocess_data(df)
+    summary = loader.get_summary_stats(papers_df, patents_df)
     
-    if analysis_type == "📊 종합 대시보드":
-        render_comprehensive_dashboard(filtered_df, filtered_papers, filtered_patents)
-        
-    elif analysis_type == "📈 트렌드 분석":
-        render_trend_analysis(filtered_df, filtered_papers, filtered_patents)
-        
-    elif analysis_type == "🌍 국가별 비교":
-        render_country_analysis(filtered_df, filtered_papers, filtered_patents)
-        
-    elif analysis_type == "🎯 상세 분석":
-        render_detailed_analysis(filtered_df, filtered_papers, filtered_patents)
+    # 사이드바 컨트롤
+    controls = render_sidebar_controls(papers_df, patents_df)
     
-    # 푸터 정보
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: gray; font-size: 12px;'>
-        📊 기술수준조사 서지분석 대시보드 | 
-        데이터 기간: {year_range[0]}-{year_range[1]}년 | 
-        분석 국가: {country_count}개 | 
-        최종 업데이트: {update_time}
-    </div>
-    """.format(
-        year_range=filters['year_range'],
-        country_count=len(filters['countries']),
-        update_time="2024-09-21"
-    ), unsafe_allow_html=True)
+    # 데이터 필터링
+    if controls['year_range']:
+        papers_df, patents_df = loader.filter_data_by_years(
+            papers_df, patents_df, controls['year_range']
+        )
+    
+    if controls['selected_countries']:
+        papers_df, patents_df = loader.filter_data_by_countries(
+            papers_df, patents_df, controls['selected_countries']
+        )
+    
+    # 필터링 후 요약 정보 업데이트
+    filtered_summary = loader.get_summary_stats(papers_df, patents_df)
+    
+    # 메인 콘텐츠 렌더링
+    analysis_mode = controls['analysis_mode']
+    
+    if analysis_mode == "📊 전체 대시보드":
+        render_full_dashboard(papers_df, patents_df, filtered_summary, controls)
+        
+    elif analysis_mode == "📈 트렌드 분석":
+        render_trend_dashboard(papers_df, patents_df)
+        
+    elif analysis_mode == "🌍 국가별 분석":
+        render_country_dashboard(papers_df, patents_df, controls)
+        
+    else:  # 상세 분석
+        render_detailed_dashboard(papers_df, patents_df, filtered_summary)
+    
+    # 사이드바 요약 정보
+    render_sidebar_summary(filtered_summary, controls)
 
 if __name__ == "__main__":
     main()
-    
