@@ -458,11 +458,11 @@ def render_sidebar_controls(papers_df, patents_df):
     
     # 기술 분야 라디오 버튼으로 선택
     tech_filter = None
-    if papers_df is not None and not papers_df.empty and 'label_s_title' in papers_df.columns:
+    if papers_df is not None and not papers_df.empty and 'label_m_title' in papers_df.columns:
         st.sidebar.subheader("🔬 기술 분야")
         
         try:
-            tech_options = sorted(papers_df['label_s_title'].unique())
+            tech_options = sorted(papers_df['label_m_title'].unique())
             selected_tech = st.sidebar.radio(
                 "분석 대상 선택",
                 options=['전체'] + tech_options,
@@ -487,10 +487,10 @@ def apply_data_filters(papers_df, patents_df, filters):
     
     try:
         # 기술 분야 필터
-        if filters['tech_filter'] and filtered_papers is not None and 'label_s_title' in filtered_papers.columns:
-            filtered_papers = filtered_papers[filtered_papers['label_s_title'].isin(filters['tech_filter'])]
-            if filtered_patents is not None and 'label_s_title' in filtered_patents.columns:
-                filtered_patents = filtered_patents[filtered_patents['label_s_title'].isin(filters['tech_filter'])]
+        if filters['tech_filter'] and filtered_papers is not None and 'label_m_title' in filtered_papers.columns:
+            filtered_papers = filtered_papers[filtered_papers['label_m_title'].isin(filters['tech_filter'])]
+            if filtered_patents is not None and 'label_m_title' in filtered_patents.columns:
+                filtered_patents = filtered_patents[filtered_patents['label_m_title'].isin(filters['tech_filter'])]
         
         # 국가 필터
         if filters['country_filter'] and filtered_papers is not None and 'Country' in filtered_papers.columns:
