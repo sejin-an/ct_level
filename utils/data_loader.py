@@ -21,7 +21,7 @@ class DataLoader:
     def load_excel_data(_self) -> pd.DataFrame:
         """엑셀 파일에서 데이터 로드"""
         try:
-            df = pd.read_excel(_self.file_path, sheet_name='Sheet4')
+            df = pd.read_excel(_self.file_path)
             df.columns = df.columns.str.strip()
             df = df.dropna(subset=['Year'])
             return df
