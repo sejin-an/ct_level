@@ -26,12 +26,11 @@ st.set_page_config(
 try:
     from utils.data_loader import load_data, get_summary_stats
     from components.trends import render_basic_timeseries
-    from components.country import render_country_trends
     
     IMPORTS_SUCCESSFUL = True
 except ImportError as e:
     st.error(f"모듈 import 오류: {e}")
-    st.info("utils/data_loader.py, components/trends.py, components/country.py 파일을 확인하세요.")
+    st.info("utils/data_loader.py, components/trends.py 파일을 확인하세요.")
     IMPORTS_SUCCESSFUL = False
 
 # 스타일링
@@ -267,7 +266,45 @@ def render_technology_trends(papers_df):
         fig_tech_trend.update_layout(height=400)
         st.plotly_chart(fig_tech_trend, use_container_width=True)
 
-def render_comprehensive_ranking(papers_df, patents_df):
+def render_country_trends_simple(papers_df, patents_df, top_n=10):
+    """국가별 트렌드 분석 (간단 버전)"""
+    if papers_df is None or papers_df.empty:
+        st.warning("국가별 트렌드 분석을 위한 데이터가 없습니다.")
+        return
+    
+    st.subheader("🌍 상위 국가별 시계열 트렌드")
+    
+    # 상위 국가 선택
+    top_countries = papers_df.groupby('Country')['Total_Papers'].sum().nlargest(top_n).index.tolist()
+    
+    # 연도별 국가별 데이터
+    country_yearly = papers_df[papers_df['Country'].isin(top_countries)].groupby(['Year', 'Country'])['Total_Papers'].sum().reset_index()
+    
+    if not country_yearly.empty:
+        import plotly.express as px
+        fig = px.line(
+            country_yearly,
+            x='Year',
+            y='Total_Papers',
+            color='Country',
+            title=f'상위 {top_n}개국 연도별 논문 수 추이',
+            markers=True
+        )
+        fig.update_traces(line_width=2, marker_size=6)
+        fig.update_layout(height=500, legend=dict(orientation="h", yanchor="bottom", y=1.02))
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 국가별 요약 통계
+        st.subheader("📊 상위 국가 요약 통계")
+        country_stats = papers_df[papers_df['Country'].isin(top_countries)].groupby('Country').agg({
+            'Total_Papers': 'sum',
+            'Q1_Ratio(%)': 'mean',
+            'Avg_Citations': 'mean'
+        }).round(2)
+        country_stats = country_stats.sort_values('Total_Papers', ascending=False)
+        country_stats.insert(0, '순위', range(1, len(country_stats) + 1))
+        
+        st.dataframe(country_stats, use_container_width=True)
     """종합 순위"""
     st.subheader("🏆 국가별 종합 순위")
     
@@ -470,9 +507,8 @@ def main():
     render_country_comparison(filtered_papers, filtered_patents)
     st.markdown("---")
     
-    # 5. 국가별 트렌드 (기존 컴포넌트 사용)
-    if IMPORTS_SUCCESSFUL:
-        render_country_trends(filtered_papers, filtered_patents, top_n=10)
+    # 5. 국가별 트렌드 (직접 구현)
+    render_country_trends_simple(filtered_papers, filtered_patents, top_n=10)
         st.markdown("---")
     
     # 6. 기술 분야 트렌드
