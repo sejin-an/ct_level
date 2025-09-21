@@ -387,7 +387,8 @@ def render_sidebar_summary(summary, controls):
         st.sidebar.success(f"📅 분석 기간: {summary['year_range'][0]}-{summary['year_range'][1]}년")
 
 if __name__ == "__main__":
-    main()st.markdown("---")
+    main()
+    st.markdown("---")
     
     # 탭 구성
     tab1, tab2, tab3, tab4 = st.tabs([
