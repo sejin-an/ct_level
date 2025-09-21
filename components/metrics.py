@@ -1,12 +1,34 @@
 """
-KPI 메트릭 컴포넌트
+KPI 메트릭 컴포넌트 (개선 버전)
 components/metrics.py
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import numpy as np
+from datetime import datetime
+import warnings
+warnings.filterwarnings('ignore')
+
+def safe_get_numeric_value(value):
+    """안전하게 숫자 값 추출"""
+    try:
+        if pd.isna(value):
+            return 0
+        return float(value)
+    except:
+        return 0
+
+def safe_calculate_percentage(numerator, denominator):
+    """안전하게 백분율 계산"""
+    try:
+        if denominator == 0:
+            return 0
+        return (numerator / denominator) * 100
+    except:
+        return 0
 
 def render_summary_metrics(summary: dict):
     """요약 메트릭 카드 렌더링"""
@@ -15,36 +37,91 @@ def render_summary_metrics(summary: dict):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
+        paper_count = safe_get_numeric_value(summary.get('paper_count', 0))
         st.metric(
             label="📄 총 논문 수",
-            value=f"{summary['paper_count']:,}",
+            value=f"{paper_count:,}",
             help="전체 논문 레코드 수"
         )
     
     with col2:
+        patent_count = safe_get_numeric_value(summary.get('patent_count', 0))
         st.metric(
             label="⚖️ 총 특허 수", 
-            value=f"{summary['patent_count']:,}",
+            value=f"{patent_count:,}",
             help="전체 특허 레코드 수"
         )
     
     with col3:
-        if summary['year_range']:
-            year_range = f"{summary['year_range'][0]}-{summary['year_range'][1]}"
+        year_range = summary.get('year_range')
+        if year_range and len(year_range) == 2:
+            year_display = f"{year_range[0]}-{year_range[1]}"
             st.metric(
                 label="📅 분석 기간",
-                value=year_range,
+                value=year_display,
                 help="데이터 연도 범위"
             )
         else:
             st.metric(label="📅 분석 기간", value="N/A")
     
     with col4:
+        country_count = safe_get_numeric_value(summary.get('country_count', 0))
         st.metric(
             label="🌍 국가 수",
-            value=f"{summary['country_count']}",
+            value=f"{country_count}",
             help="분석 대상 국가 수"
         )
+    
+    # 추가 인사이트 메트릭
+    render_additional_insights(summary)
+
+def render_additional_insights(summary):
+    """추가 인사이트 메트릭"""
+    paper_count = safe_get_numeric_value(summary.get('paper_count', 0))
+    patent_count = safe_get_numeric_value(summary.get('patent_count', 0))
+    total_count = paper_count + patent_count
+    
+    if total_count > 0:
+        st.markdown("---")
+        st.subheader("🔍 데이터 인사이트")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            paper_ratio = safe_calculate_percentage(paper_count, total_count)
+            st.metric(
+                label="📄 논문 비율",
+                value=f"{paper_ratio:.1f}%",
+                help="전체 데이터 중 논문 비율"
+            )
+        
+        with col2:
+            patent_ratio = safe_calculate_percentage(patent_count, total_count)
+            st.metric(
+                label="⚖️ 특허 비율",
+                value=f"{patent_ratio:.1f}%",
+                help="전체 데이터 중 특허 비율"
+            )
+        
+        with col3:
+            year_range = summary.get('year_range')
+            if year_range and len(year_range) == 2:
+                year_span = year_range[1] - year_range[0] + 1
+                st.metric(
+                    label="📈 분석 기간",
+                    value=f"{year_span}년",
+                    help="데이터 기간 폭"
+                )
+        
+        with col4:
+            country_count = safe_get_numeric_value(summary.get('country_count', 0))
+            if country_count > 0 and total_count > 0:
+                avg_per_country = total_count / country_count
+                st.metric(
+                    label="🌍 국가당 평균",
+                    value=f"{avg_per_country:.0f}",
+                    help="국가당 평균 데이터 수"
+                )
 
 def render_yearly_metrics(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
     """연도별 메트릭"""
@@ -53,161 +130,276 @@ def render_yearly_metrics(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
     col1, col2 = st.columns(2)
     
     with col1:
-        if not papers_df.empty and 'Year' in papers_df.columns:
-            yearly_papers = papers_df.groupby('Year').size()
+        render_paper_yearly_metrics(papers_df)
+    
+    with col2:
+        render_patent_yearly_metrics(patents_df)
+
+def render_paper_yearly_metrics(papers_df):
+    """논문 연도별 메트릭"""
+    if papers_df is None or papers_df.empty:
+        st.info("논문 데이터가 없습니다.")
+        return
+    
+    try:
+        # 연도 컬럼 찾기
+        year_col = None
+        for col in papers_df.columns:
+            if col.lower() in ['year', '연도']:
+                year_col = col
+                break
+        
+        # 논문 수 컬럼 찾기
+        paper_col = None
+        for col in papers_df.columns:
+            if any(keyword in col.lower() for keyword in ['total', 'paper', '논문']):
+                paper_col = col
+                break
+        
+        if year_col and paper_col:
+            yearly_papers = papers_df.groupby(year_col)[paper_col].sum()
             
             if len(yearly_papers) > 1:
-                # 최근 증가율 계산
-                recent_growth = yearly_papers.pct_change().iloc[-1] * 100
+                latest_year = yearly_papers.index[-1]
                 latest_count = yearly_papers.iloc[-1]
+                
+                # 전년 대비 증가율
+                if len(yearly_papers) > 1:
+                    previous_count = yearly_papers.iloc[-2]
+                    growth_rate = safe_calculate_percentage(
+                        latest_count - previous_count, previous_count
+                    )
+                    delta_value = f"{growth_rate:+.1f}%"
+                else:
+                    delta_value = None
                 
                 st.metric(
                     label="📄 최근 논문 수",
                     value=f"{latest_count:,}",
-                    delta=f"{recent_growth:+.1f}%" if not np.isnan(recent_growth) else None,
-                    help=f"{yearly_papers.index[-1]}년 기준"
+                    delta=delta_value,
+                    help=f"{latest_year}년 기준"
                 )
+                
+                # 연평균 증가율 (CAGR)
+                if len(yearly_papers) > 2:
+                    first_count = yearly_papers.iloc[0]
+                    years_span = len(yearly_papers) - 1
+                    if first_count > 0:
+                        cagr = ((latest_count / first_count) ** (1/years_span) - 1) * 100
+                        st.metric(
+                            label="📈 연평균 증가율",
+                            value=f"{cagr:.1f}%",
+                            help="CAGR (Compound Annual Growth Rate)"
+                        )
             else:
-                st.metric(label="📄 최근 논문 수", value=f"{yearly_papers.iloc[0]:,}")
+                st.metric(
+                    label="📄 논문 수",
+                    value=f"{yearly_papers.iloc[0]:,}"
+                )
+        else:
+            st.warning("논문 연도별 데이터를 찾을 수 없습니다.")
+            
+    except Exception as e:
+        st.error(f"논문 연도별 메트릭 오류: {e}")
+
+def render_patent_yearly_metrics(patents_df):
+    """특허 연도별 메트릭"""
+    if patents_df is None or patents_df.empty:
+        st.info("특허 데이터가 없습니다.")
+        return
     
-    with col2:
-        if not patents_df.empty and 'Year' in patents_df.columns:
-            yearly_patents = patents_df.groupby('Year').size()
+    try:
+        # 연도 컬럼 찾기
+        year_col = None
+        for col in patents_df.columns:
+            if col.lower() in ['year', '연도']:
+                year_col = col
+                break
+        
+        # 특허 수 컬럼 찾기
+        patent_col = None
+        for col in patents_df.columns:
+            if any(keyword in col.lower() for keyword in ['patent', 'count', '특허']):
+                patent_col = col
+                break
+        
+        if year_col and patent_col:
+            yearly_patents = patents_df.groupby(year_col)[patent_col].sum()
             
             if len(yearly_patents) > 1:
-                # 최근 증가율 계산
-                recent_growth = yearly_patents.pct_change().iloc[-1] * 100
+                latest_year = yearly_patents.index[-1]
                 latest_count = yearly_patents.iloc[-1]
+                
+                # 전년 대비 증가율
+                if len(yearly_patents) > 1:
+                    previous_count = yearly_patents.iloc[-2]
+                    growth_rate = safe_calculate_percentage(
+                        latest_count - previous_count, previous_count
+                    )
+                    delta_value = f"{growth_rate:+.1f}%"
+                else:
+                    delta_value = None
                 
                 st.metric(
                     label="⚖️ 최근 특허 수",
                     value=f"{latest_count:,}",
-                    delta=f"{recent_growth:+.1f}%" if not np.isnan(recent_growth) else None,
-                    help=f"{yearly_patents.index[-1]}년 기준"
+                    delta=delta_value,
+                    help=f"{latest_year}년 기준"
                 )
+                
+                # 연평균 증가율 (CAGR)
+                if len(yearly_patents) > 2:
+                    first_count = yearly_patents.iloc[0]
+                    years_span = len(yearly_patents) - 1
+                    if first_count > 0:
+                        cagr = ((latest_count / first_count) ** (1/years_span) - 1) * 100
+                        st.metric(
+                            label="📈 연평균 증가율",
+                            value=f"{cagr:.1f}%",
+                            help="CAGR (Compound Annual Growth Rate)"
+                        )
             else:
-                st.metric(label="⚖️ 최근 특허 수", value=f"{yearly_patents.iloc[0]:,}")
+                st.metric(
+                    label="⚖️ 특허 수",
+                    value=f"{yearly_patents.iloc[0]:,}"
+                )
+        else:
+            st.warning("특허 연도별 데이터를 찾을 수 없습니다.")
+            
+    except Exception as e:
+        st.error(f"특허 연도별 메트릭 오류: {e}")
 
 def render_top_countries_metrics(papers_df: pd.DataFrame, top_n: int = 5):
     """상위 국가 메트릭"""
-    if papers_df.empty or 'Country' not in papers_df.columns:
+    if papers_df is None or papers_df.empty:
         return
     
     st.subheader(f"🏆 상위 {top_n}개국")
     
-    # 국가별 집계
-    country_counts = papers_df['Country'].value_counts().head(top_n)
-    
-    # 컬럼으로 표시
-    cols = st.columns(min(top_n, 5))
-    
-    for i, (country, count) in enumerate(country_counts.items()):
-        if i < len(cols):
-            with cols[i]:
-                # 전체 대비 비율 계산
-                total_count = len(papers_df)
-                percentage = (count / total_count) * 100 if total_count > 0 else 0
-                
-                st.metric(
-                    label=f"🌍 {country}",
-                    value=f"{count:,}",
-                    delta=f"{percentage:.1f}%",
-                    help="전체 대비 비율"
-                )
+    try:
+        # 국가 컬럼 찾기
+        country_col = None
+        for col in papers_df.columns:
+            if col.lower() in ['country', '국가', 'nation']:
+                country_col = col
+                break
+        
+        if not country_col:
+            st.warning("국가 컬럼을 찾을 수 없습니다.")
+            return
+        
+        # 논문 수 컬럼 찾기
+        paper_col = None
+        for col in papers_df.columns:
+            if any(keyword in col.lower() for keyword in ['total', 'paper', '논문']):
+                paper_col = col
+                break
+        
+        if paper_col:
+            # 국가별 집계
+            country_counts = papers_df.groupby(country_col)[paper_col].sum().nlargest(top_n)
+        else:
+            # 컬럼이 없으면 단순 개수로 집계
+            country_counts = papers_df[country_col].value_counts().head(top_n)
+        
+        # 컬럼으로 표시
+        cols = st.columns(min(top_n, 5))
+        
+        total_count = country_counts.sum()
+        
+        for i, (country, count) in enumerate(country_counts.items()):
+            if i < len(cols):
+                with cols[i]:
+                    # 전체 대비 비율 계산
+                    percentage = safe_calculate_percentage(count, total_count)
+                    
+                    st.metric(
+                        label=f"🌍 {country}",
+                        value=f"{count:,}",
+                        delta=f"{percentage:.1f}%",
+                        help="상위 국가 대비 비율"
+                    )
+        
+        # 상위 국가들의 시각화
+        render_top_countries_chart(country_counts)
+        
+    except Exception as e:
+        st.error(f"상위 국가 메트릭 오류: {e}")
 
-def render_distribution_metrics(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """분포 메트릭"""
-    st.subheader("📊 데이터 분포")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # 연도별 분포
-        if not papers_df.empty and 'Year' in papers_df.columns:
-            year_counts = papers_df['Year'].value_counts()
-            most_active_year = year_counts.index[0]
-            max_count = year_counts.iloc[0]
-            
-            st.metric(
-                label="📅 최다 발행 연도",
-                value=str(most_active_year),
-                delta=f"{max_count:,}건",
-                help="논문 발행이 가장 많은 연도"
-            )
-    
-    with col2:
-        # 국가별 분포
-        if not papers_df.empty and 'Country' in papers_df.columns:
-            unique_countries = papers_df['Country'].nunique()
-            avg_per_country = len(papers_df) / unique_countries if unique_countries > 0 else 0
-            
-            st.metric(
-                label="🌍 평균 국가당 논문",
-                value=f"{avg_per_country:.1f}",
-                help="국가당 평균 논문 수"
-            )
-    
-    with col3:
-        # 데이터 완성도
-        if not papers_df.empty:
-            # 주요 컬럼의 결측값 비율
-            key_cols = ['Year', 'Country']
-            available_cols = [col for col in key_cols if col in papers_df.columns]
-            
-            if available_cols:
-                completeness = papers_df[available_cols].notna().all(axis=1).mean() * 100
-                st.metric(
-                    label="✅ 데이터 완성도",
-                    value=f"{completeness:.1f}%",
-                    help="주요 컬럼 완성도"
-                )
+def render_top_countries_chart(country_counts):
+    """상위 국가 차트"""
+    try:
+        fig = px.pie(
+            values=country_counts.values,
+            names=country_counts.index,
+            title="상위 국가 분포"
+        )
+        fig.update_layout(height=300, margin=dict(t=50, b=20, l=20, r=20))
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.warning(f"상위 국가 차트 생성 오류: {e}")
 
 def render_comparison_gauge(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
     """논문 vs 특허 비교 게이지"""
-    if papers_df.empty and patents_df.empty:
-        return
-    
     st.subheader("⚖️ 논문 vs 특허 비율")
     
-    paper_count = len(papers_df)
-    patent_count = len(patents_df)
-    total_count = paper_count + patent_count
-    
-    if total_count > 0:
-        paper_ratio = (paper_count / total_count) * 100
+    try:
+        paper_count = len(papers_df) if papers_df is not None and not papers_df.empty else 0
+        patent_count = len(patents_df) if patents_df is not None and not patents_df.empty else 0
+        total_count = paper_count + patent_count
         
-        fig = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = paper_ratio,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "논문 비율 (%)"},
-            delta = {'reference': 50, 'suffix': "%"},
-            gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': "darkblue"},
-                'steps': [
-                    {'range': [0, 25], 'color': "lightgray"},
-                    {'range': [25, 50], 'color': "gray"},
-                    {'range': [50, 75], 'color': "lightblue"},
-                    {'range': [75, 100], 'color': "blue"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 90
+        if total_count > 0:
+            paper_ratio = (paper_count / total_count) * 100
+            
+            # 게이지 차트
+            fig = go.Figure(go.Indicator(
+                mode = "gauge+number+delta",
+                value = paper_ratio,
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                title = {'text': "논문 비율 (%)"},
+                delta = {'reference': 50, 'suffix': "%"},
+                gauge = {
+                    'axis': {'range': [None, 100]},
+                    'bar': {'color': "darkblue"},
+                    'steps': [
+                        {'range': [0, 25], 'color': "lightgray"},
+                        {'range': [25, 50], 'color': "gray"},
+                        {'range': [50, 75], 'color': "lightblue"},
+                        {'range': [75, 100], 'color': "blue"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 50
+                    }
                 }
-            }
-        ))
-        
-        fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 수치 정보
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"📄 논문: {paper_count:,}건 ({paper_ratio:.1f}%)")
-        with col2:
-            st.info(f"⚖️ 특허: {patent_count:,}건 ({100-paper_ratio:.1f}%)")
+            ))
+            
+            fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 수치 정보
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.info(f"📄 논문: {paper_count:,}건 ({paper_ratio:.1f}%)")
+            with col2:
+                st.info(f"⚖️ 특허: {patent_count:,}건 ({100-paper_ratio:.1f}%)")
+            with col3:
+                # 균형도 평가
+                balance = abs(paper_ratio - 50)
+                if balance < 10:
+                    balance_text = "🔄 균형적"
+                elif balance < 25:
+                    balance_text = "📊 편향적"
+                else:
+                    balance_text = "⚠️ 매우편향적"
+                st.info(f"균형도: {balance_text}")
+        else:
+            st.warning("비교할 데이터가 없습니다.")
+            
+    except Exception as e:
+        st.error(f"비교 게이지 오류: {e}")
 
 def render_data_quality_metrics(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
     """데이터 품질 메트릭"""
@@ -215,47 +407,166 @@ def render_data_quality_metrics(papers_df: pd.DataFrame, patents_df: pd.DataFram
     
     col1, col2, col3 = st.columns(3)
     
-    # 논문 데이터 품질
     with col1:
-        if not papers_df.empty:
-            # 중복 확인 (Year + Country 기준)
-            if all(col in papers_df.columns for col in ['Year', 'Country']):
-                total_rows = len(papers_df)
-                unique_combinations = papers_df[['Year', 'Country']].drop_duplicates().shape[0]
-                duplicate_ratio = ((total_rows - unique_combinations) / total_rows) * 100 if total_rows > 0 else 0
-                
-                st.metric(
-                    label="📄 논문 중복률",
-                    value=f"{duplicate_ratio:.1f}%",
-                    help="연도-국가 조합 기준 중복 비율"
-                )
+        render_data_completeness(papers_df, "논문")
     
-    # 특허 데이터 품질  
     with col2:
-        if not patents_df.empty:
-            if all(col in patents_df.columns for col in ['Year', 'Country']):
-                total_rows = len(patents_df)
-                unique_combinations = patents_df[['Year', 'Country']].drop_duplicates().shape[0]
-                duplicate_ratio = ((total_rows - unique_combinations) / total_rows) * 100 if total_rows > 0 else 0
-                
-                st.metric(
-                    label="⚖️ 특허 중복률",
-                    value=f"{duplicate_ratio:.1f}%",
-                    help="연도-국가 조합 기준 중복 비율"
-                )
+        render_data_completeness(patents_df, "특허")
     
-    # 전체 데이터 범위
     with col3:
-        all_years = []
-        if not papers_df.empty and 'Year' in papers_df.columns:
-            all_years.extend(papers_df['Year'].tolist())
-        if not patents_df.empty and 'Year' in patents_df.columns:
-            all_years.extend(patents_df['Year'].tolist())
+        render_data_consistency(papers_df, patents_df)
+
+def render_data_completeness(df, data_type):
+    """데이터 완성도 분석"""
+    try:
+        if df is None or df.empty:
+            st.metric(f"{data_type} 완성도", "N/A")
+            return
         
-        if all_years:
-            year_span = max(all_years) - min(all_years) + 1
+        # 주요 컬럼들의 완성도 확인
+        key_columns = []
+        for col in df.columns:
+            if col.lower() in ['year', 'country', '연도', '국가']:
+                key_columns.append(col)
+        
+        if key_columns:
+            # 모든 키 컬럼이 완성된 행의 비율
+            complete_rows = df[key_columns].notna().all(axis=1).sum()
+            total_rows = len(df)
+            completeness = safe_calculate_percentage(complete_rows, total_rows)
+            
+            # 중복 확인
+            if len(key_columns) >= 2:
+                unique_combinations = df[key_columns].drop_duplicates().shape[0]
+                duplicate_ratio = safe_calculate_percentage(
+                    total_rows - unique_combinations, total_rows
+                )
+            else:
+                duplicate_ratio = 0
+            
             st.metric(
-                label="📅 데이터 기간 폭",
-                value=f"{year_span}년",
-                help="최소-최대 연도 차이"
+                label=f"{data_type} 완성도",
+                value=f"{completeness:.1f}%",
+                delta=f"중복: {duplicate_ratio:.1f}%",
+                help="주요 컬럼 완성도 및 중복률"
             )
+        else:
+            st.metric(f"{data_type} 완성도", "측정불가")
+            
+    except Exception as e:
+        st.warning(f"{data_type} 데이터 품질 분석 오류: {e}")
+
+def render_data_consistency(papers_df, patents_df):
+    """데이터 일관성 분석"""
+    try:
+        consistency_score = 0
+        total_checks = 0
+        
+        # 연도 범위 일관성 확인
+        if papers_df is not None and patents_df is not None:
+            paper_years = set()
+            patent_years = set()
+            
+            # 논문 연도 추출
+            for col in papers_df.columns:
+                if col.lower() in ['year', '연도']:
+                    paper_years = set(papers_df[col].dropna().unique())
+                    break
+            
+            # 특허 연도 추출
+            for col in patents_df.columns:
+                if col.lower() in ['year', '연도']:
+                    patent_years = set(patents_df[col].dropna().unique())
+                    break
+            
+            if paper_years and patent_years:
+                # 공통 연도 비율
+                common_years = paper_years & patent_years
+                all_years = paper_years | patent_years
+                if all_years:
+                    year_consistency = len(common_years) / len(all_years) * 100
+                    consistency_score += year_consistency
+                    total_checks += 1
+            
+            # 국가 일관성 확인
+            paper_countries = set()
+            patent_countries = set()
+            
+            # 논문 국가 추출
+            for col in papers_df.columns:
+                if col.lower() in ['country', '국가']:
+                    paper_countries = set(papers_df[col].dropna().unique())
+                    break
+            
+            # 특허 국가 추출
+            for col in patents_df.columns:
+                if col.lower() in ['country', '국가']:
+                    patent_countries = set(patents_df[col].dropna().unique())
+                    break
+            
+            if paper_countries and patent_countries:
+                # 공통 국가 비율
+                common_countries = paper_countries & patent_countries
+                all_countries = paper_countries | patent_countries
+                if all_countries:
+                    country_consistency = len(common_countries) / len(all_countries) * 100
+                    consistency_score += country_consistency
+                    total_checks += 1
+        
+        # 평균 일관성 점수
+        if total_checks > 0:
+            avg_consistency = consistency_score / total_checks
+            
+            if avg_consistency >= 80:
+                consistency_level = "높음"
+                color = "normal"
+            elif avg_consistency >= 60:
+                consistency_level = "중간"
+                color = "normal"
+            else:
+                consistency_level = "낮음"
+                color = "inverse"
+            
+            st.metric(
+                label="🔗 데이터 일관성",
+                value=f"{avg_consistency:.0f}%",
+                delta=consistency_level,
+                help="논문-특허 간 연도/국가 일관성"
+            )
+        else:
+            st.metric("🔗 데이터 일관성", "측정불가")
+            
+    except Exception as e:
+        st.warning(f"데이터 일관성 분석 오류: {e}")
+
+def render_performance_metrics():
+    """시스템 성능 메트릭"""
+    st.subheader("⚡ 시스템 성능")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        # 현재 시간
+        current_time = datetime.now().strftime("%H:%M:%S")
+        st.metric("🕐 업데이트 시간", current_time)
+    
+    with col2:
+        # 세션 정보
+        if hasattr(st.session_state, 'data_load_time'):
+            st.metric("⏱️ 로드 시간", f"{st.session_state.data_load_time:.2f}초")
+        else:
+            st.metric("⏱️ 로드 시간", "측정중")
+    
+    with col3:
+        # 메모리 사용량 (대략적)
+        try:
+            import psutil
+            memory_percent = psutil.virtual_memory().percent
+            st.metric("💾 메모리 사용", f"{memory_percent:.1f}%")
+        except:
+            st.metric("💾 메모리 사용", "N/A")
+    
+    with col4:
+        # 캐시 상태
+        cache_hits = len(st.cache_data.get_stats()) if hasattr(st.cache_data, 'get_stats') else 0
+        st.metric("🗄️ 캐시 히트", f"{cache_hits}")
