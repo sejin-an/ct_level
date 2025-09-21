@@ -91,23 +91,19 @@ def render_paper_yearly_metrics(papers_df):
         return
     
     try:
-        # 연도 컬럼 찾기
-        year_col = None
-        for col in papers_df.columns:
-            if col.lower() in ['year', '연도']:
-                year_col = col
-                break
+        from utils.data_loader import detect_data_structure
+        structure = detect_data_structure(papers_df)
         
-        if not year_col:
-            st.warning("연도 컬럼을 찾을 수 없습니다.")
+        if not structure['has_timeseries']:
+            st.warning("논문 데이터에 연도 정보가 없습니다.")
             return
+        
+        year_col = structure['time_columns'][0]
         
         # 논문 수 컬럼 찾기
         paper_col = None
-        for col in papers_df.columns:
-            if any(keyword in col.lower() for keyword in ['total', 'paper', '논문']):
-                paper_col = col
-                break
+        if structure['numeric_columns']:
+            paper_col = structure['numeric_columns'][0]
         
         if paper_col:
             yearly_papers = papers_df.groupby(year_col)[paper_col].sum()
@@ -160,23 +156,19 @@ def render_patent_yearly_metrics(patents_df):
         return
     
     try:
-        # 연도 컬럼 찾기
-        year_col = None
-        for col in patents_df.columns:
-            if col.lower() in ['year', '연도']:
-                year_col = col
-                break
+        from utils.data_loader import detect_data_structure
+        structure = detect_data_structure(patents_df)
         
-        if not year_col:
-            st.warning("연도 컬럼을 찾을 수 없습니다.")
+        if not structure['has_timeseries']:
+            st.warning("특허 데이터에 연도 정보가 없습니다.")
             return
+        
+        year_col = structure['time_columns'][0]
         
         # 특허 수 컬럼 찾기
         patent_col = None
-        for col in patents_df.columns:
-            if any(keyword in col.lower() for keyword in ['patent', 'count', '특허']):
-                patent_col = col
-                break
+        if structure['numeric_columns']:
+            patent_col = structure['numeric_columns'][0]
         
         if patent_col:
             yearly_patents = patents_df.groupby(year_col)[patent_col].sum()
@@ -230,27 +222,23 @@ def render_top_countries_metrics(papers_df: pd.DataFrame, top_n: int = 5):
     st.subheader(f"🏆 상위 {top_n}개국")
     
     try:
-        # 국가 컬럼 찾기
-        country_col = None
-        for col in papers_df.columns:
-            if col.lower() in ['country', '국가', 'nation']:
-                country_col = col
-                break
+        from utils.data_loader import detect_data_structure
+        structure = detect_data_structure(papers_df)
         
-        if not country_col:
-            st.warning("국가 컬럼을 찾을 수 없습니다.")
+        if not structure['has_country']:
+            st.warning("국가 정보가 없습니다.")
             return
         
-        # 논문 수 컬럼 찾기
-        paper_col = None
-        for col in papers_df.columns:
-            if any(keyword in col.lower() for keyword in ['total', 'paper', '논문']):
-                paper_col = col
-                break
+        country_col = structure['country_columns'][0]
         
-        if paper_col:
+        # 주요 수치 컬럼 찾기
+        main_col = None
+        if structure['numeric_columns']:
+            main_col = structure['numeric_columns'][0]
+        
+        if main_col:
             # 국가별 집계
-            country_counts = papers_df.groupby(country_col)[paper_col].sum().nlargest(top_n)
+            country_counts = papers_df.groupby(country_col)[main_col].sum().nlargest(top_n)
         else:
             # 컬럼이 없으면 단순 개수로 집계
             country_counts = papers_df[country_col].value_counts().head(top_n)
@@ -359,11 +347,15 @@ def render_data_completeness(df, data_type):
             st.metric(f"{data_type} 완성도", "N/A")
             return
         
+        from utils.data_loader import detect_data_structure
+        structure = detect_data_structure(df)
+        
         # 주요 컬럼들의 완성도 확인
         key_columns = []
-        for col in df.columns:
-            if col.lower() in ['year', 'country', '연도', '국가']:
-                key_columns.append(col)
+        if structure['has_timeseries']:
+            key_columns.extend(structure['time_columns'])
+        if structure['has_country']:
+            key_columns.extend(structure['country_columns'])
         
         if key_columns:
             # 모든 키 컬럼이 완성된 행의 비율
@@ -398,22 +390,25 @@ def render_data_consistency(papers_df, patents_df):
         consistency_score = 0
         total_checks = 0
         
+        from utils.data_loader import detect_data_structure
+        
         # 연도 범위 일관성 확인
         if papers_df is not None and patents_df is not None:
+            paper_structure = detect_data_structure(papers_df)
+            patent_structure = detect_data_structure(patents_df)
+            
             paper_years = set()
             patent_years = set()
             
             # 논문 연도 추출
-            for col in papers_df.columns:
-                if col.lower() in ['year', '연도']:
-                    paper_years = set(papers_df[col].dropna().unique())
-                    break
+            if paper_structure['has_timeseries']:
+                year_col = paper_structure['time_columns'][0]
+                paper_years = set(papers_df[year_col].dropna().unique())
             
             # 특허 연도 추출
-            for col in patents_df.columns:
-                if col.lower() in ['year', '연도']:
-                    patent_years = set(patents_df[col].dropna().unique())
-                    break
+            if patent_structure['has_timeseries']:
+                year_col = patent_structure['time_columns'][0]
+                patent_years = set(patents_df[year_col].dropna().unique())
             
             if paper_years and patent_years:
                 # 공통 연도 비율
@@ -429,16 +424,14 @@ def render_data_consistency(papers_df, patents_df):
             patent_countries = set()
             
             # 논문 국가 추출
-            for col in papers_df.columns:
-                if col.lower() in ['country', '국가']:
-                    paper_countries = set(papers_df[col].dropna().unique())
-                    break
+            if paper_structure['has_country']:
+                country_col = paper_structure['country_columns'][0]
+                paper_countries = set(papers_df[country_col].dropna().unique())
             
             # 특허 국가 추출
-            for col in patents_df.columns:
-                if col.lower() in ['country', '국가']:
-                    patent_countries = set(patents_df[col].dropna().unique())
-                    break
+            if patent_structure['has_country']:
+                country_col = patent_structure['country_columns'][0]
+                patent_countries = set(patents_df[country_col].dropna().unique())
             
             if paper_countries and patent_countries:
                 # 공통 국가 비율
