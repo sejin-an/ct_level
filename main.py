@@ -787,12 +787,11 @@ def render_sidebar_controls(papers_df, patents_df):
             tech_options = sorted(papers_df['label_m_title'].unique())
             selected_tech = st.sidebar.radio(
                 "분석 대상 선택",
-                options=['전체'] + tech_options,
+                options=tech_options,
                 index=0
             )
             
-            if selected_tech != '전체':
-                tech_filter = [selected_tech]
+            tech_filter = [selected_tech]
         except Exception as e:
             st.sidebar.error(f"기술 분야 로드 오류: {e}")
     
