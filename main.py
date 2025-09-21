@@ -22,7 +22,12 @@ st.set_page_config(
 
 # 컴포넌트 import
 try:
-    from utils.data_loader import load_data, filter_data, detect_data_structure, get_available_filters
+    from utils.data_loader import (
+        load_data, 
+        filter_data, 
+        detect_data_structure, 
+        get_available_filters
+    )
     from components.metrics import (
         render_summary_metrics, 
         render_yearly_metrics, 
@@ -106,6 +111,11 @@ def create_sample_data():
 
 def get_top_countries(papers_df, patents_df, top_n=20):
     """논문/특허 최다 국가 기준으로 상위 N개국 추출"""
+    try:
+        from utils.data_loader import detect_data_structure
+    except ImportError:
+        return []
+    
     all_countries = set()
     
     # 논문 상위 국가
@@ -130,6 +140,20 @@ def get_top_countries(papers_df, patents_df, top_n=20):
 
 def get_summary_stats(papers_df, patents_df):
     """요약 통계 생성"""
+    try:
+        from utils.data_loader import detect_data_structure
+    except ImportError:
+        # 기본 통계 계산
+        paper_count = len(papers_df) if papers_df is not None and not papers_df.empty else 0
+        patent_count = len(patents_df) if patents_df is not None and not patents_df.empty else 0
+        return {
+            'paper_count': paper_count,
+            'patent_count': patent_count,
+            'total_count': paper_count + patent_count,
+            'year_range': (2020, 2024),
+            'country_count': 0
+        }
+    
     paper_count = len(papers_df) if papers_df is not None and not papers_df.empty else 0
     patent_count = len(patents_df) if patents_df is not None and not patents_df.empty else 0
     
@@ -178,7 +202,16 @@ def render_sidebar_controls(papers_df, patents_df):
     st.sidebar.title("⚙️ 대시보드 설정")
     
     # 사용 가능한 필터 가져오기
-    available_filters = get_available_filters(papers_df, patents_df)
+    try:
+        from utils.data_loader import get_available_filters
+        available_filters = get_available_filters(papers_df, patents_df)
+    except ImportError:
+        # 임시로 기본값 설정
+        available_filters = {
+            'year_range': (2020, 2024),
+            'countries': [],
+            'labels': []
+        }
     
     # 1. 기술 분야 선택 (label_m) - 첫 번째로 이동
     st.sidebar.subheader("🔬 기술 분야 (label_m)")
@@ -379,6 +412,12 @@ def render_label_analysis_dashboard(papers_df, patents_df, selected_labels):
 def render_label_s_analysis(df, label_m_values, data_type):
     """label_s 기반 세부 분석"""
     try:
+        from utils.data_loader import detect_data_structure
+    except ImportError:
+        st.error("데이터 분석 모듈을 로드할 수 없습니다.")
+        return
+    
+    try:
         if df is None or df.empty:
             st.info(f"{data_type} 데이터가 없습니다.")
             return
@@ -444,6 +483,12 @@ def render_label_timeseries_analysis(papers_df, patents_df, label_m_values):
 def render_single_label_timeseries(df, label_m_values, data_type):
     """단일 데이터의 라벨별 시계열"""
     try:
+        from utils.data_loader import detect_data_structure
+    except ImportError:
+        st.error("데이터 분석 모듈을 로드할 수 없습니다.")
+        return
+    
+    try:
         if df is None or df.empty or 'label_m' not in df.columns:
             st.info(f"{data_type} 라벨 데이터가 없습니다.")
             return
@@ -479,6 +524,12 @@ def render_single_label_timeseries(df, label_m_values, data_type):
 
 def render_label_country_analysis(papers_df, patents_df, label_m_values):
     """라벨별 국가 분포 분석"""
+    try:
+        from utils.data_loader import detect_data_structure
+    except ImportError:
+        st.error("데이터 분석 모듈을 로드할 수 없습니다.")
+        return
+    
     st.subheader("🌍 선택된 기술 분야 국가별 분포")
     
     all_data = []
