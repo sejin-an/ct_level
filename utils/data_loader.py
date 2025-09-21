@@ -1,192 +1,215 @@
-# utils/data_loader.py
-import streamlit as st
+"""
+데이터 로딩 및 전처리 유틸리티
+utils/data_loader.py
+"""
+
 import pandas as pd
 import numpy as np
-import os
+import streamlit as st
+from typing import Tuple, List, Dict
 
-@st.cache_data
-def load_data(file_path):
-    """엑셀 파일에서 데이터 로드"""
-    try:
-        # 파일 존재 확인
-        if not os.path.exists(file_path):
-            st.error(f"파일이 존재하지 않습니다: {file_path}")
-            return None
+class DataLoader:
+    """데이터 로딩 및 전처리 클래스"""
+    
+    def __init__(self, file_path: str = '_통합평가자료.xlsx'):
+        self.file_path = file_path
+        self.raw_data = None
+        self.papers_data = None
+        self.patents_data = None
+    
+    @st.cache_data
+    def load_excel_data(_self) -> pd.DataFrame:
+        """엑셀 파일에서 데이터 로드"""
+        try:
+            df = pd.read_excel(_self.file_path, sheet_name='Sheet4')
+            df.columns = df.columns.str.strip()
+            df = df.dropna(subset=['Year'])
+            return df
+        except Exception as e:
+            st.error(f"데이터 로드 오류: {e}")
+            return pd.DataFrame()
+    
+    def preprocess_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """데이터 전처리"""
+        df = df.copy()
+        
+        # 연도를 정수로 변환
+        df['Year'] = df['Year'].astype(int)
+        
+        # 논문과 특허 데이터 분리
+        papers_df = df[df['구분'] == '1. 논문'].copy()
+        patents_df = df[df['구분'] == '2. 특허'].copy()
+        
+        # 논문 데이터 전처리
+        papers_df = self._preprocess_papers(papers_df)
+        
+        # 특허 데이터 전처리
+        patents_df = self._preprocess_patents(patents_df)
+        
+        return df, papers_df, patents_df
+    
+    def _preprocess_papers(self, papers_df: pd.DataFrame) -> pd.DataFrame:
+        """논문 데이터 전처리"""
+        if papers_df.empty:
+            return papers_df
+        
+        # 결측값 처리
+        numeric_columns = ['Total_Papers', 'H_Index', 'Q1_Ratio(%)', 
+                          'Collaboration_Ratio(%)', 'Avg_Citations', 'Avg_mrnif']
+        
+        for col in numeric_columns:
+            if col in papers_df.columns:
+                papers_df[col] = pd.to_numeric(papers_df[col], errors='coerce').fillna(0)
+        
+        return papers_df
+    
+    def _preprocess_patents(self, patents_df: pd.DataFrame) -> pd.DataFrame:
+        """특허 데이터 전처리"""
+        if patents_df.empty:
+            return patents_df
+        
+        # 특허 관련 컬럼명 매핑
+        column_mapping = {
+            'patent_count': 'patent_count',
+            'triadic_ratio': 'triadic_ratio',
+            'claims_per_patent': 'claims_per_patent',
+            'foreign_filing_intensity': 'foreign_filing_intensity'
+        }
+        
+        # 결측값 처리
+        numeric_columns = list(column_mapping.values())
+        
+        for col in numeric_columns:
+            if col in patents_df.columns:
+                patents_df[col] = pd.to_numeric(patents_df[col], errors='coerce').fillna(0)
+        
+        return patents_df
+    
+    def filter_data(self, df: pd.DataFrame, year_range: Tuple[int, int], 
+                   countries: List[str]) -> pd.DataFrame:
+        """데이터 필터링"""
+        filtered_df = df[
+            (df['Year'] >= year_range[0]) & 
+            (df['Year'] <= year_range[1]) & 
+            (df['Country'].isin(countries))
+        ]
+        return filtered_df
+    
+    def get_summary_stats(self, df: pd.DataFrame) -> Dict:
+        """요약 통계"""
+        if df.empty:
+            return {}
+        
+        return {
+            'total_records': len(df),
+            'years': sorted(df['Year'].unique()),
+            'countries': sorted(df['Country'].unique()),
+            'categories': sorted(df['구분'].unique()) if '구분' in df.columns else []
+        }
+    
+    def get_yearly_summary(self, papers_df: pd.DataFrame, 
+                          patents_df: pd.DataFrame) -> pd.DataFrame:
+        """연도별 요약 데이터"""
+        summary_data = []
+        
+        # 논문 데이터 요약
+        if not papers_df.empty:
+            papers_summary = papers_df.groupby(['Year', 'Country']).agg({
+                'Total_Papers': 'sum',
+                'H_Index': 'mean',
+                'Q1_Ratio(%)': 'mean',
+                'Collaboration_Ratio(%)': 'mean'
+            }).reset_index()
+            papers_summary['Type'] = 'Papers'
+            summary_data.append(papers_summary)
+        
+        # 특허 데이터 요약
+        if not patents_df.empty:
+            patent_count_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
             
-        # 엑셀 파일 로드
-        df = pd.read_excel(file_path)
-        st.success(f"파일 로드 성공: {file_path}, 데이터 크기: {df.shape}")
-        return df
-    except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {e}")
-        import traceback
-        st.error(f"상세 오류: {traceback.format_exc()}")
-        return None
-
-def create_sample_data():
-    """샘플 데이터 생성"""
-    # 국가 목록
-    countries = ['US', 'CN', 'JP', 'KR', 'DE', 'FR', 'GB', 'IN', 'CA', 'IT', 
-                'AU', 'ES', 'BR', 'RU', 'NL', 'CH', 'SE', 'SG', 'TR', 'PL']
-    
-    # 기본 데이터 생성
-    data = []
-    
-    # 논문 데이터
-    for country in countries:
-        papers = int(np.random.exponential(1000) * (1 + countries.index(country) * 0.1))
-        citations = int(papers * np.random.uniform(5, 15))
-        h_index = int(np.sqrt(citations) * np.random.uniform(0.8, 1.2))
+            agg_dict = {}
+            if patent_count_col in patents_df.columns:
+                agg_dict[patent_count_col] = 'sum'
+            if 'triadic_ratio' in patents_df.columns:
+                agg_dict['triadic_ratio'] = 'mean'
+            if 'claims_per_patent' in patents_df.columns:
+                agg_dict['claims_per_patent'] = 'mean'
+            
+            if agg_dict:
+                patents_summary = patents_df.groupby(['Year', 'Country']).agg(agg_dict).reset_index()
+                patents_summary['Type'] = 'Patents'
+                summary_data.append(patents_summary)
         
-        data.append({
-            "구분": "1. 논문",
-            "Country": country,
-            "논문 건수": papers,
-            "Total_Citations": citations,
-            "Avg_Citations": citations / papers if papers > 0 else 0,
-            "H_Index": h_index,
-            "Top10_Ratio(%)": np.random.uniform(5, 20),
-            "Q1_Ratio(%)": np.random.uniform(30, 60),
-            "Collaboration_Ratio(%)": np.random.uniform(40, 80),
-            "label_m": np.random.randint(1, 39),  # 38대 분류
-            "label_s": np.random.randint(1, 83),  # 82대 분류
-            "label_m_title": f"기술분류_38_{np.random.randint(1, 39)}",
-            "label_s_title": f"기술분류_82_{np.random.randint(1, 83)}"
-        })
-    
-    # 특허 데이터
-    for country in countries:
-        patents = int(np.random.exponential(800) * (1 + countries.index(country) * 0.08))
-        citations = int(patents * np.random.uniform(3, 10))
-        h_index = int(np.sqrt(citations) * np.random.uniform(0.7, 1.1))
-        
-        data.append({
-            "구분": "2. 특허",
-            "Country": country,
-            "total_papers_granted": patents,
-            "total_citations": citations,
-            "avg_citations": citations / patents if patents > 0 else 0,
-            "h_index": h_index,
-            "triadic_ratio": np.random.uniform(0.05, 0.3),
-            "foreign_filing_intensity": np.random.uniform(2, 8),
-            "patent_impact": np.random.uniform(0.5, 2),
-            "label_m": np.random.randint(1, 39),  # 38대 분류
-            "label_s": np.random.randint(1, 83),  # 82대 분류
-            "label_m_title": f"기술분류_38_{np.random.randint(1, 39)}",
-            "label_s_title": f"기술분류_82_{np.random.randint(1, 83)}"
-        })
-    
-    return pd.DataFrame(data)
-
-def preprocess_data(df):
-    """데이터 전처리"""
-    if df is None:
-        return None, None
-    
-    # 논문/특허 구분
-    if '구분' in df.columns:
-        paper_df = df[df['구분'] == '1. 논문'].copy()
-        patent_df = df[df['구분'] == '2. 특허'].copy()
-    else:
-        st.error("데이터에 '구분' 컬럼이 없습니다.")
-        return None, None
-    
-    # 국가 컬럼 확인
-    country_col = None
-    for col_name in ['Country', 'country']:
-        if col_name in paper_df.columns:
-            country_col = col_name
-            break
-    
-    if country_col is None:
-        st.warning("국가 컬럼을 찾을 수 없습니다.")
-    else:
-        # 국가 컬럼 이름 표준화
-        if country_col != 'Country':
-            paper_df['Country'] = paper_df[country_col]
-            patent_df['Country'] = patent_df[country_col]
-    
-    # 기술 분류 정보 추가
-    for data_df in [paper_df, patent_df]:
-        if 'label_m' in data_df.columns and 'label_m_title' in data_df.columns:
-            data_df['기술분류_38'] = data_df['label_m_title']
-        
-        if 'label_s' in data_df.columns and 'label_s_title' in data_df.columns:
-            data_df['기술분류_82'] = data_df['label_s_title']
-    
-    return paper_df, patent_df
-
-def get_top20_countries(paper_df, patent_df):
-    """논문과 특허 데이터에서 상위 20개국 필터링"""
-    # 논문 기준 상위 국가
-    paper_top = []
-    if paper_df is not None and 'Country' in paper_df.columns:
-        # 논문 지표 후보들
-        paper_metrics = ['논문 건수', 'Total_Papers', '논문 점유율(%)', 'H_Index']
-        
-        for metric in paper_metrics:
-            if metric in paper_df.columns:
-                paper_top = paper_df.groupby('Country')[metric].sum().nlargest(20).index.tolist()
-                st.info(f"논문 기준 상위 20개국: {', '.join(paper_top[:5])}...")
-                break
-    
-    # 특허 기준 상위 국가
-    patent_top = []
-    if patent_df is not None and 'Country' in patent_df.columns:
-        # 특허 지표 후보들
-        patent_metrics = ['total_papers_granted', 'patent_share', 'h_index', 'total_citations']
-        
-        for metric in patent_metrics:
-            if metric in patent_df.columns:
-                patent_top = patent_df.groupby('Country')[metric].sum().nlargest(20).index.tolist()
-                st.info(f"특허 기준 상위 20개국: {', '.join(patent_top[:5])}...")
-                break
-    
-    # 우선순위: 논문 top10 + 특허 top10 (중복 제거)
-    combined = list(dict.fromkeys(paper_top[:10] + patent_top[:10]))
-    
-    # 남은 자리는 논문, 특허 순위로 채움
-    if len(combined) < 20:
-        remaining = 20 - len(combined)
-        extra_countries = [c for c in paper_top[10:] + patent_top[10:] if c not in combined]
-        combined.extend(extra_countries[:remaining])
-    
-    # 최대 20개로 제한
-    top_countries = combined[:20]
-    
-    st.success(f"분석 대상 상위 20개국 선정 완료: {', '.join(top_countries)}")
-    
-    return top_countries
-    
-def show_debug_info(df, paper_df, patent_df):
-    """디버깅 정보 표시"""
-    with st.expander("데이터 디버깅 정보", expanded=False):
-        st.write("### 원본 데이터")
-        st.write(f"크기: {df.shape}")
-        st.write(f"컬럼: {', '.join(df.columns)}")
-        st.write("첫 5개 행:")
-        st.dataframe(df.head())
-        
-        st.write("### 논문 데이터")
-        if paper_df is not None:
-            st.write(f"크기: {paper_df.shape}")
-            st.write("사용 가능한 지표 컬럼:")
-            for col in paper_df.columns:
-                if paper_df[col].dtype in ['int64', 'float64']:
-                    st.write(f"- {col} ({paper_df[col].dtype})")
-            st.write("첫 5개 행:")
-            st.dataframe(paper_df.head())
+        if summary_data:
+            return pd.concat(summary_data, ignore_index=True)
         else:
-            st.write("논문 데이터 없음")
+            return pd.DataFrame()
+    
+    def calculate_competitiveness_score(self, papers_df: pd.DataFrame, 
+                                       patents_df: pd.DataFrame) -> pd.DataFrame:
+        """경쟁력 점수 계산"""
+        scores = []
         
-        st.write("### 특허 데이터")
-        if patent_df is not None:
-            st.write(f"크기: {patent_df.shape}")
-            st.write("사용 가능한 지표 컬럼:")
-            for col in patent_df.columns:
-                if patent_df[col].dtype in ['int64', 'float64']:
-                    st.write(f"- {col} ({patent_df[col].dtype})")
-            st.write("첫 5개 행:")
-            st.dataframe(patent_df.head())
-        else:
-            st.write("특허 데이터 없음")
+        # 논문 기반 점수
+        if not papers_df.empty:
+            for _, row in papers_df.iterrows():
+                paper_score = (
+                    (row.get('Total_Papers', 0) * 0.3) +
+                    (row.get('H_Index', 0) * 0.3) +
+                    (row.get('Q1_Ratio(%)', 0) * 0.2) +
+                    (row.get('Collaboration_Ratio(%)', 0) * 0.2)
+                )
+                
+                scores.append({
+                    'Year': row['Year'],
+                    'Country': row['Country'],
+                    'Type': 'Papers',
+                    'Score': paper_score
+                })
+        
+        # 특허 기반 점수
+        if not patents_df.empty:
+            patent_count_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
+            
+            for _, row in patents_df.iterrows():
+                patent_score = (
+                    (row.get(patent_count_col, 0) * 0.4) +
+                    (row.get('triadic_ratio', 0) * 100 * 0.3) +
+                    (row.get('claims_per_patent', 0) * 0.3)
+                )
+                
+                scores.append({
+                    'Year': row['Year'],
+                    'Country': row['Country'],
+                    'Type': 'Patents',
+                    'Score': patent_score
+                })
+        
+        return pd.DataFrame(scores) if scores else pd.DataFrame()
+
+# 전역 데이터 로더 인스턴스
+@st.cache_resource
+def get_data_loader():
+    """데이터 로더 싱글톤 인스턴스"""
+    return DataLoader()
+
+# 편의 함수들
+def load_and_preprocess_data():
+    """데이터 로드 및 전처리 (편의 함수)"""
+    loader = get_data_loader()
+    raw_data = loader.load_excel_data()
+    
+    if raw_data.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    return loader.preprocess_data(raw_data)
+
+def get_available_filters(df: pd.DataFrame):
+    """사용 가능한 필터 옵션 반환"""
+    if df.empty:
+        return [], (2020, 2024)
+    
+    countries = sorted(df['Country'].unique())
+    year_min, year_max = int(df['Year'].min()), int(df['Year'].max())
+    
+    return countries, (year_min, year_max)
