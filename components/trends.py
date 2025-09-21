@@ -1,5 +1,5 @@
 """
-시계열 트렌드 분석 컴포넌트
+시계열 트렌드 분석 컴포넌트 (개선 버전)
 components/trends.py
 """
 
@@ -9,385 +9,539 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
 
-def render_yearly_trends_comprehensive(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """포괄적 연도별 트렌드 분석"""
-    st.subheader("📈 연도별 종합 트렌드")
+def safe_get_numeric_column(df, keywords):
+    """안전하게 숫자형 컬럼 찾기"""
+    if df is None or df.empty:
+        return None
     
-    if papers_df.empty and patents_df.empty:
+    for col in df.columns:
+        if any(keyword.lower() in col.lower() for keyword in keywords):
+            try:
+                # 숫자형으로 변환 가능한지 확인
+                pd.to_numeric(df[col], errors='coerce')
+                return col
+            except:
+                continue
+    return None
+
+def safe_get_column(df, keywords):
+    """안전하게 컬럼 찾기"""
+    if df is None or df.empty:
+        return None
+    
+    for col in df.columns:
+        if any(keyword.lower() in col.lower() for keyword in keywords):
+            return col
+    return None
+
+def render_basic_timeseries(papers_df, patents_df):
+    """기본 시계열 분석"""
+    st.subheader("📈 기본 시계열 분석")
+    
+    if papers_df is None and patents_df is None:
         st.warning("표시할 데이터가 없습니다.")
         return
     
-    # 4개 서브플롯 생성
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=(
-            '논문 출간 수 추이', 
-            '특허 출원 수 추이', 
-            '논문 품질 지표 (H-Index)', 
-            '특허 품질 지표 (Triadic 비율)'
-        ),
-        specs=[[{"secondary_y": False}, {"secondary_y": False}],
-               [{"secondary_y": False}, {"secondary_y": False}]]
-    )
-    
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
-    
-    # 1. 논문 출간 수 추이
-    if not papers_df.empty and 'Total_Papers' in papers_df.columns:
-        papers_yearly = papers_df.groupby(['Year', 'Country'])['Total_Papers'].sum().reset_index()
-        for i, country in enumerate(papers_yearly['Country'].unique()):
-            country_data = papers_yearly[papers_yearly['Country'] == country]
-            fig.add_trace(
-                go.Scatter(
-                    x=country_data['Year'],
-                    y=country_data['Total_Papers'],
-                    mode='lines+markers',
-                    name=f"{country}",
-                    line=dict(color=colors[i % len(colors)], width=2),
-                    marker=dict(size=6)
-                ),
-                row=1, col=1
-            )
-    
-    # 2. 특허 출원 수 추이
-    if not patents_df.empty:
-        patent_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
-        if patent_col in patents_df.columns:
-            patents_yearly = patents_df.groupby(['Year', 'Country'])[patent_col].sum().reset_index()
-            for i, country in enumerate(patents_yearly['Country'].unique()):
-                country_data = patents_yearly[patents_yearly['Country'] == country]
-                fig.add_trace(
-                    go.Scatter(
-                        x=country_data['Year'],
-                        y=country_data[patent_col],
-                        mode='lines+markers',
-                        name=f"{country}",
-                        line=dict(color=colors[i % len(colors)], width=2, dash='dash'),
-                        marker=dict(size=6),
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-    
-    # 3. H-Index 추이
-    if not papers_df.empty and 'H_Index' in papers_df.columns:
-        h_index_yearly = papers_df.groupby(['Year', 'Country'])['H_Index'].mean().reset_index()
-        for i, country in enumerate(h_index_yearly['Country'].unique()):
-            country_data = h_index_yearly[h_index_yearly['Country'] == country]
-            fig.add_trace(
-                go.Scatter(
-                    x=country_data['Year'],
-                    y=country_data['H_Index'],
-                    mode='lines+markers',
-                    name=f"{country}",
-                    line=dict(color=colors[i % len(colors)], width=2),
-                    marker=dict(size=6),
-                    showlegend=False
-                ),
-                row=2, col=1
-            )
-    
-    # 4. Triadic 비율 추이
-    if not patents_df.empty and 'triadic_ratio' in patents_df.columns:
-        triadic_yearly = patents_df.groupby(['Year', 'Country'])['triadic_ratio'].mean().reset_index()
-        triadic_yearly['triadic_ratio'] = triadic_yearly['triadic_ratio'] * 100  # 백분율 변환
-        for i, country in enumerate(triadic_yearly['Country'].unique()):
-            country_data = triadic_yearly[triadic_yearly['Country'] == country]
-            fig.add_trace(
-                go.Scatter(
-                    x=country_data['Year'],
-                    y=country_data['triadic_ratio'],
-                    mode='lines+markers',
-                    name=f"{country}",
-                    line=dict(color=colors[i % len(colors)], width=2, dash='dash'),
-                    marker=dict(size=6),
-                    showlegend=False
-                ),
-                row=2, col=2
-            )
-    
-    # 레이아웃 업데이트
-    fig.update_layout(
-        height=600,
-        title_text="연도별 주요 지표 종합 트렌드",
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    
-    # 축 라벨 설정
-    fig.update_xaxes(title_text="연도", row=2, col=1)
-    fig.update_xaxes(title_text="연도", row=2, col=2)
-    fig.update_yaxes(title_text="논문 수", row=1, col=1)
-    fig.update_yaxes(title_text="특허 수", row=1, col=2)
-    fig.update_yaxes(title_text="H-Index", row=2, col=1)
-    fig.update_yaxes(title_text="Triadic 비율 (%)", row=2, col=2)
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-def render_growth_rate_analysis(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """성장률 분석"""
-    st.subheader("📊 연간 성장률 분석")
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        if not papers_df.empty and len(papers_df['Year'].unique()) > 1:
-            # 논문 성장률
-            papers_growth = calculate_growth_rates(papers_df, 'Total_Papers', '논문')
-            if not papers_growth.empty:
-                fig = px.bar(
-                    papers_growth,
-                    x='Country',
-                    y='Growth_Rate',
-                    color='Growth_Rate',
-                    title='논문 수 연간 성장률',
-                    color_continuous_scale='RdYlBu_r',
-                    text='Growth_Rate'
-                )
-                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                fig.update_layout(xaxis_tickangle=-45, yaxis_title='성장률 (%)')
-                st.plotly_chart(fig, use_container_width=True)
+        if papers_df is not None and not papers_df.empty:
+            render_paper_timeseries(papers_df)
     
     with col2:
-        if not patents_df.empty and len(patents_df['Year'].unique()) > 1:
-            # 특허 성장률
-            patent_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
-            patents_growth = calculate_growth_rates(patents_df, patent_col, '특허')
-            if not patents_growth.empty:
-                fig = px.bar(
-                    patents_growth,
-                    x='Country',
-                    y='Growth_Rate',
-                    color='Growth_Rate',
-                    title='특허 수 연간 성장률',
-                    color_continuous_scale='RdYlBu_r',
-                    text='Growth_Rate'
-                )
-                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                fig.update_layout(xaxis_tickangle=-45, yaxis_title='성장률 (%)')
-                st.plotly_chart(fig, use_container_width=True)
+        if patents_df is not None and not patents_df.empty:
+            render_patent_timeseries(patents_df)
 
-def calculate_growth_rates(df: pd.DataFrame, value_col: str, data_type: str) -> pd.DataFrame:
-    """성장률 계산"""
-    growth_data = []
-    
-    for country in df['Country'].unique():
-        country_data = df[df['Country'] == country].sort_values('Year')
-        if len(country_data) > 1 and value_col in country_data.columns:
-            yearly_data = country_data.groupby('Year')[value_col].sum()
-            growth_rate = yearly_data.pct_change().mean() * 100
+def render_paper_timeseries(papers_df):
+    """논문 시계열 분석"""
+    try:
+        year_col = safe_get_column(papers_df, ['year', '연도'])
+        papers_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
+        
+        if not year_col or not papers_col:
+            st.info("논문 시계열 데이터를 찾을 수 없습니다.")
+            return
+        
+        # 연도별 집계
+        yearly_data = papers_df.groupby(year_col)[papers_col].sum().reset_index()
+        yearly_data = yearly_data.sort_values(year_col)
+        
+        fig = px.line(
+            yearly_data, 
+            x=year_col, 
+            y=papers_col,
+            title='📄 연도별 논문 수 추이',
+            markers=True
+        )
+        fig.update_traces(line_width=3, marker_size=8)
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 성장률 계산
+        if len(yearly_data) > 1:
+            growth_rate = yearly_data[papers_col].pct_change().mean() * 100
+            st.metric("📈 평균 성장률", f"{growth_rate:.1f}%")
             
-            growth_data.append({
-                'Country': country,
-                'Growth_Rate': growth_rate,
-                'Type': data_type
-            })
-    
-    return pd.DataFrame(growth_data)
+    except Exception as e:
+        st.error(f"논문 시계열 분석 오류: {e}")
 
-def render_correlation_analysis(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """상관관계 분석"""
-    st.subheader("🔗 지표간 상관관계")
+def render_patent_timeseries(patents_df):
+    """특허 시계열 분석"""
+    try:
+        year_col = safe_get_column(patents_df, ['year', '연도'])
+        patent_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
+        
+        if not year_col or not patent_col:
+            st.info("특허 시계열 데이터를 찾을 수 없습니다.")
+            return
+        
+        # 연도별 집계
+        yearly_data = patents_df.groupby(year_col)[patent_col].sum().reset_index()
+        yearly_data = yearly_data.sort_values(year_col)
+        
+        fig = px.line(
+            yearly_data, 
+            x=year_col, 
+            y=patent_col,
+            title='⚖️ 연도별 특허 수 추이',
+            markers=True,
+            color_discrete_sequence=['#FF6B6B']
+        )
+        fig.update_traces(line_width=3, marker_size=8)
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 성장률 계산
+        if len(yearly_data) > 1:
+            growth_rate = yearly_data[patent_col].pct_change().mean() * 100
+            st.metric("📈 평균 성장률", f"{growth_rate:.1f}%")
+            
+    except Exception as e:
+        st.error(f"특허 시계열 분석 오류: {e}")
+
+def render_combined_timeseries(papers_df, patents_df):
+    """통합 시계열 비교"""
+    st.subheader("🔄 논문 vs 특허 통합 비교")
     
-    # 논문-특허 통합 데이터 생성
-    if papers_df.empty or patents_df.empty:
+    if papers_df is None or patents_df is None:
         st.warning("논문과 특허 데이터가 모두 필요합니다.")
         return
     
-    # 국가별 통합 데이터
-    correlation_data = []
-    
-    for country in set(papers_df['Country'].unique()) & set(patents_df['Country'].unique()):
-        papers_country = papers_df[papers_df['Country'] == country]
-        patents_country = patents_df[patents_df['Country'] == country]
+    try:
+        # 논문 데이터 처리
+        paper_year_col = safe_get_column(papers_df, ['year', '연도'])
+        paper_count_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
         
-        if not papers_country.empty and not patents_country.empty:
-            patent_col = 'patent_count' if 'patent_count' in patents_country.columns else 'Total_Papers'
-            
-            correlation_data.append({
-                'Country': country,
-                'Papers': papers_country['Total_Papers'].sum() if 'Total_Papers' in papers_country.columns else 0,
-                'Patents': patents_country[patent_col].sum() if patent_col in patents_country.columns else 0,
-                'H_Index': papers_country['H_Index'].mean() if 'H_Index' in papers_country.columns else 0,
-                'Triadic_Ratio': patents_country['triadic_ratio'].mean() * 100 if 'triadic_ratio' in patents_country.columns else 0,
-                'Q1_Ratio': papers_country['Q1_Ratio(%)'].mean() if 'Q1_Ratio(%)' in papers_country.columns else 0
-            })
-    
-    if correlation_data:
-        corr_df = pd.DataFrame(correlation_data)
+        # 특허 데이터 처리
+        patent_year_col = safe_get_column(patents_df, ['year', '연도'])
+        patent_count_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
         
-        col1, col2 = st.columns(2)
+        if not all([paper_year_col, paper_count_col, patent_year_col, patent_count_col]):
+            st.warning("필요한 컬럼을 찾을 수 없습니다.")
+            return
         
-        with col1:
-            # 논문 수 vs H-Index
-            fig = px.scatter(
-                corr_df,
-                x='Papers',
-                y='H_Index',
-                color='Country',
-                size='Q1_Ratio',
-                title='논문 수 vs H-Index',
-                hover_data=['Q1_Ratio']
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+        # 연도별 집계
+        paper_yearly = papers_df.groupby(paper_year_col)[paper_count_col].sum().reset_index()
+        patent_yearly = patents_df.groupby(patent_year_col)[patent_count_col].sum().reset_index()
         
-        with col2:
-            # 특허 수 vs Triadic 비율
-            fig = px.scatter(
-                corr_df,
-                x='Patents',
-                y='Triadic_Ratio',
-                color='Country',
-                title='특허 수 vs Triadic 비율',
-                hover_data=['Country']
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+        # 정규화 (0-1 스케일)
+        paper_yearly['normalized'] = (paper_yearly[paper_count_col] - paper_yearly[paper_count_col].min()) / (paper_yearly[paper_count_col].max() - paper_yearly[paper_count_col].min())
+        patent_yearly['normalized'] = (patent_yearly[patent_count_col] - patent_yearly[patent_count_col].min()) / (patent_yearly[patent_count_col].max() - patent_yearly[patent_count_col].min())
+        
+        # 이중 축 차트 생성
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        # 논문 데이터
+        fig.add_trace(
+            go.Scatter(
+                x=paper_yearly[paper_year_col],
+                y=paper_yearly[paper_count_col],
+                mode='lines+markers',
+                name='논문 수',
+                line=dict(color='#4ECDC4', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=False,
+        )
+        
+        # 특허 데이터
+        fig.add_trace(
+            go.Scatter(
+                x=patent_yearly[patent_year_col],
+                y=patent_yearly[patent_count_col],
+                mode='lines+markers',
+                name='특허 수',
+                line=dict(color='#FF6B6B', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=True,
+        )
+        
+        # 축 라벨 설정
+        fig.update_xaxes(title_text="연도")
+        fig.update_yaxes(title_text="논문 수", secondary_y=False)
+        fig.update_yaxes(title_text="특허 수", secondary_y=True)
+        
+        fig.update_layout(
+            title="논문 vs 특허 이중축 비교",
+            height=500
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 상관관계 분석
+        render_correlation_analysis(paper_yearly, patent_yearly, paper_year_col, patent_year_col)
+        
+    except Exception as e:
+        st.error(f"통합 시계열 분석 오류: {e}")
 
-def render_seasonal_analysis(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """계절성 분석 (월별 데이터가 있는 경우)"""
-    st.subheader("📅 시계열 패턴 분석")
-    
-    # 연도별 데이터 패턴 분석
-    if not papers_df.empty:
-        papers_pattern = analyze_yearly_patterns(papers_df, 'Total_Papers', '논문')
-        if papers_pattern:
+def render_correlation_analysis(paper_data, patent_data, year_col1, year_col2):
+    """상관관계 분석"""
+    try:
+        # 공통 연도 찾기
+        common_years = set(paper_data[year_col1]) & set(patent_data[year_col2])
+        
+        if len(common_years) < 3:
+            st.info("상관관계 분석을 위한 충분한 데이터가 없습니다.")
+            return
+        
+        # 공통 연도 데이터 추출
+        paper_common = paper_data[paper_data[year_col1].isin(common_years)].sort_values(year_col1)
+        patent_common = patent_data[patent_data[year_col2].isin(common_years)].sort_values(year_col2)
+        
+        if len(paper_common) == len(patent_common):
+            # 상관계수 계산
+            correlation = np.corrcoef(paper_common.iloc[:, 1], patent_common.iloc[:, 1])[0, 1]
+            
             col1, col2 = st.columns(2)
-            
             with col1:
-                st.metric(
-                    label="논문 발행 패턴",
-                    value=papers_pattern['trend'],
-                    delta=f"변동계수: {papers_pattern['cv']:.2f}"
-                )
-            
+                st.metric("📊 상관계수", f"{correlation:.3f}")
             with col2:
-                if not patents_df.empty:
-                    patent_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
-                    patents_pattern = analyze_yearly_patterns(patents_df, patent_col, '특허')
-                    if patents_pattern:
-                        st.metric(
-                            label="특허 출원 패턴",
-                            value=patents_pattern['trend'],
-                            delta=f"변동계수: {patents_pattern['cv']:.2f}"
-                        )
+                if abs(correlation) > 0.7:
+                    st.success("🔗 강한 상관관계")
+                elif abs(correlation) > 0.4:
+                    st.warning("🔗 중간 상관관계")
+                else:
+                    st.info("🔗 약한 상관관계")
+                    
+    except Exception as e:
+        st.warning(f"상관관계 분석 중 오류: {e}")
 
-def analyze_yearly_patterns(df: pd.DataFrame, value_col: str, data_type: str) -> dict:
-    """연도별 패턴 분석"""
-    if df.empty or value_col not in df.columns:
-        return None
-    
-    yearly_totals = df.groupby('Year')[value_col].sum()
-    
-    if len(yearly_totals) < 2:
-        return None
-    
-    # 트렌드 분석
-    years = yearly_totals.index.values
-    values = yearly_totals.values
-    
-    # 선형 회귀로 트렌드 계산
-    slope = np.polyfit(years, values, 1)[0]
-    cv = np.std(values) / np.mean(values) if np.mean(values) != 0 else 0
-    
-    if slope > 0:
-        trend = "증가 추세"
-    elif slope < 0:
-        trend = "감소 추세"
-    else:
-        trend = "안정적"
-    
-    return {
-        'trend': trend,
-        'cv': cv,
-        'slope': slope
-    }
-
-def render_forecasting(papers_df: pd.DataFrame, patents_df: pd.DataFrame):
-    """간단한 예측 분석"""
-    st.subheader("🔮 트렌드 예측")
-    
-    if papers_df.empty and patents_df.empty:
-        st.warning("예측을 위한 데이터가 부족합니다.")
-        return
+def render_cumulative_trends(papers_df, patents_df):
+    """누적 추이 분석"""
+    st.subheader("📈 누적 추이 분석")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if not papers_df.empty and len(papers_df['Year'].unique()) > 1:
-            forecast_papers = create_simple_forecast(papers_df, 'Total_Papers', '논문')
-            if forecast_papers:
-                st.plotly_chart(forecast_papers, use_container_width=True)
+        if papers_df is not None and not papers_df.empty:
+            render_cumulative_chart(papers_df, "논문", ['total', 'paper', '논문'])
     
     with col2:
-        if not patents_df.empty and len(patents_df['Year'].unique()) > 1:
-            patent_col = 'patent_count' if 'patent_count' in patents_df.columns else 'Total_Papers'
-            forecast_patents = create_simple_forecast(patents_df, patent_col, '특허')
-            if forecast_patents:
-                st.plotly_chart(forecast_patents, use_container_width=True)
+        if patents_df is not None and not patents_df.empty:
+            render_cumulative_chart(patents_df, "특허", ['patent', 'count', '특허'])
 
-def create_simple_forecast(df: pd.DataFrame, value_col: str, data_type: str):
+def render_cumulative_chart(df, data_type, keywords):
+    """누적 차트 렌더링"""
+    try:
+        year_col = safe_get_column(df, ['year', '연도'])
+        count_col = safe_get_numeric_column(df, keywords)
+        
+        if not year_col or not count_col:
+            st.info(f"{data_type} 누적 데이터를 찾을 수 없습니다.")
+            return
+        
+        # 연도별 집계 및 누적합 계산
+        yearly_data = df.groupby(year_col)[count_col].sum().reset_index()
+        yearly_data = yearly_data.sort_values(year_col)
+        yearly_data['cumulative'] = yearly_data[count_col].cumsum()
+        
+        fig = px.area(
+            yearly_data,
+            x=year_col,
+            y='cumulative',
+            title=f"{data_type} 누적 추이",
+            color_discrete_sequence=['#45B7D1']
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 총 누적량 표시
+        total_cumulative = yearly_data['cumulative'].iloc[-1]
+        st.metric(f"📊 총 누적 {data_type} 수", f"{total_cumulative:,.0f}")
+        
+    except Exception as e:
+        st.error(f"{data_type} 누적 분석 오류: {e}")
+
+def render_growth_rate_analysis(papers_df, patents_df):
+    """성장률 분석"""
+    st.subheader("📊 성장률 세부 분석")
+    
+    tab1, tab2, tab3 = st.tabs(["📄 논문 성장률", "⚖️ 특허 성장률", "📈 비교 분석"])
+    
+    with tab1:
+        if papers_df is not None and not papers_df.empty:
+            render_detailed_growth_analysis(papers_df, "논문", ['total', 'paper', '논문'])
+    
+    with tab2:
+        if patents_df is not None and not patents_df.empty:
+            render_detailed_growth_analysis(patents_df, "특허", ['patent', 'count', '특허'])
+    
+    with tab3:
+        render_growth_comparison(papers_df, patents_df)
+
+def render_detailed_growth_analysis(df, data_type, keywords):
+    """상세 성장률 분석"""
+    try:
+        year_col = safe_get_column(df, ['year', '연도'])
+        count_col = safe_get_numeric_column(df, keywords)
+        country_col = safe_get_column(df, ['country', '국가'])
+        
+        if not year_col or not count_col:
+            st.info(f"{data_type} 성장률 데이터를 찾을 수 없습니다.")
+            return
+        
+        # 전체 성장률
+        yearly_total = df.groupby(year_col)[count_col].sum().reset_index()
+        yearly_total = yearly_total.sort_values(year_col)
+        yearly_total['growth_rate'] = yearly_total[count_col].pct_change() * 100
+        
+        # 성장률 차트
+        fig = px.bar(
+            yearly_total.dropna(),
+            x=year_col,
+            y='growth_rate',
+            title=f"{data_type} 연간 성장률 (%)",
+            color='growth_rate',
+            color_continuous_scale='RdYlGn'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 통계 요약
+        if len(yearly_total.dropna()) > 0:
+            avg_growth = yearly_total['growth_rate'].mean()
+            std_growth = yearly_total['growth_rate'].std()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("평균 성장률", f"{avg_growth:.1f}%")
+            with col2:
+                st.metric("성장률 표준편차", f"{std_growth:.1f}%")
+            with col3:
+                volatility = "높음" if std_growth > 20 else "중간" if std_growth > 10 else "낮음"
+                st.metric("변동성", volatility)
+        
+        # 국가별 성장률 (상위 10개국)
+        if country_col:
+            render_country_growth_rates(df, data_type, year_col, count_col, country_col)
+            
+    except Exception as e:
+        st.error(f"{data_type} 성장률 분석 오류: {e}")
+
+def render_country_growth_rates(df, data_type, year_col, count_col, country_col):
+    """국가별 성장률 분석"""
+    try:
+        # 상위 10개국 선정
+        top_countries = df.groupby(country_col)[count_col].sum().nlargest(10).index
+        
+        growth_data = []
+        for country in top_countries:
+            country_data = df[df[country_col] == country]
+            yearly_data = country_data.groupby(year_col)[count_col].sum().sort_index()
+            
+            if len(yearly_data) > 1:
+                # CAGR 계산
+                years = len(yearly_data) - 1
+                if years > 0 and yearly_data.iloc[0] > 0:
+                    cagr = ((yearly_data.iloc[-1] / yearly_data.iloc[0]) ** (1/years) - 1) * 100
+                    growth_data.append({'Country': country, 'CAGR': cagr})
+        
+        if growth_data:
+            growth_df = pd.DataFrame(growth_data).sort_values('CAGR', ascending=False)
+            
+            fig = px.bar(
+                growth_df,
+                x='Country',
+                y='CAGR',
+                title=f"상위 10개국 {data_type} CAGR (%)",
+                color='CAGR',
+                color_continuous_scale='RdYlGn'
+            )
+            fig.update_layout(xaxis_tickangle=-45, height=400)
+            st.plotly_chart(fig, use_container_width=True)
+            
+    except Exception as e:
+        st.warning(f"국가별 성장률 분석 중 오류: {e}")
+
+def render_growth_comparison(papers_df, patents_df):
+    """성장률 비교 분석"""
+    try:
+        if papers_df is None or patents_df is None:
+            st.warning("논문과 특허 데이터가 모두 필요합니다.")
+            return
+        
+        # 논문 성장률 계산
+        paper_year_col = safe_get_column(papers_df, ['year', '연도'])
+        paper_count_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
+        
+        # 특허 성장률 계산
+        patent_year_col = safe_get_column(patents_df, ['year', '연도'])
+        patent_count_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
+        
+        if not all([paper_year_col, paper_count_col, patent_year_col, patent_count_col]):
+            st.warning("성장률 비교를 위한 필요 컬럼을 찾을 수 없습니다.")
+            return
+        
+        # 연도별 성장률 계산
+        paper_yearly = papers_df.groupby(paper_year_col)[paper_count_col].sum()
+        patent_yearly = patents_df.groupby(patent_year_col)[patent_count_col].sum()
+        
+        paper_growth = paper_yearly.pct_change() * 100
+        patent_growth = patent_yearly.pct_change() * 100
+        
+        # 공통 연도 찾기
+        common_years = set(paper_growth.index) & set(patent_growth.index)
+        
+        if len(common_years) > 1:
+            comparison_data = []
+            for year in sorted(common_years):
+                if not (pd.isna(paper_growth[year]) or pd.isna(patent_growth[year])):
+                    comparison_data.append({
+                        'Year': year,
+                        'Paper_Growth': paper_growth[year],
+                        'Patent_Growth': patent_growth[year]
+                    })
+            
+            if comparison_data:
+                comp_df = pd.DataFrame(comparison_data)
+                
+                fig = px.line(
+                    comp_df,
+                    x='Year',
+                    y=['Paper_Growth', 'Patent_Growth'],
+                    title="논문 vs 특허 성장률 비교",
+                    markers=True
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 평균 성장률 비교
+                col1, col2 = st.columns(2)
+                with col1:
+                    avg_paper_growth = comp_df['Paper_Growth'].mean()
+                    st.metric("논문 평균 성장률", f"{avg_paper_growth:.1f}%")
+                with col2:
+                    avg_patent_growth = comp_df['Patent_Growth'].mean()
+                    st.metric("특허 평균 성장률", f"{avg_patent_growth:.1f}%")
+        
+    except Exception as e:
+        st.error(f"성장률 비교 분석 오류: {e}")
+
+def render_trend_comparison(papers_df, patents_df):
+    """트렌드 상관관계 분석"""
+    st.subheader("🔗 트렌드 상관관계 분석")
+    render_combined_timeseries(papers_df, patents_df)
+
+def render_forecast_trend(papers_df, patents_df):
+    """간단한 트렌드 예측"""
+    st.subheader("🔮 트렌드 예측 (단순 선형)")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if papers_df is not None and not papers_df.empty:
+            render_simple_forecast(papers_df, "논문", ['total', 'paper', '논문'])
+    
+    with col2:
+        if patents_df is not None and not patents_df.empty:
+            render_simple_forecast(patents_df, "특허", ['patent', 'count', '특허'])
+
+def render_simple_forecast(df, data_type, keywords):
     """단순 선형 예측"""
-    if value_col not in df.columns:
-        return None
-    
-    # 연도별 총합 계산
-    yearly_data = df.groupby('Year')[value_col].sum().reset_index()
-    
-    if len(yearly_data) < 2:
-        return None
-    
-    # 선형 회귀
-    x = yearly_data['Year'].values
-    y = yearly_data[value_col].values
-    
-    # 다음 2년 예측
-    future_years = np.arange(x.max() + 1, x.max() + 3)
-    coeffs = np.polyfit(x, y, 1)
-    trend_line = np.poly1d(coeffs)
-    
-    # 과거 트렌드
-    extended_years = np.arange(x.min(), x.max() + 3)
-    trend_values = trend_line(extended_years)
-    
-    # 그래프 생성
-    fig = go.Figure()
-    
-    # 실제 데이터
-    fig.add_trace(go.Scatter(
-        x=yearly_data['Year'],
-        y=yearly_data[value_col],
-        mode='markers+lines',
-        name=f'실제 {data_type} 수',
-        line=dict(color='blue', width=3),
-        marker=dict(size=8)
-    ))
-    
-    # 트렌드 라인
-    fig.add_trace(go.Scatter(
-        x=extended_years,
-        y=trend_values,
-        mode='lines',
-        name='트렌드 예측',
-        line=dict(color='red', width=2, dash='dash')
-    ))
-    
-    # 예측 구간 표시
-    fig.add_vrect(
-        x0=x.max() + 0.5, x1=future_years.max() + 0.5,
-        fillcolor="rgba(255,0,0,0.1)",
-        layer="below",
-        line_width=0,
-    )
-    
-    fig.update_layout(
-        title=f'{data_type} 수 트렌드 및 예측',
-        xaxis_title='연도',
-        yaxis_title=f'{data_type} 수',
-        height=400,
-        showlegend=True
-    )
-    
-    return fig
+    try:
+        year_col = safe_get_column(df, ['year', '연도'])
+        count_col = safe_get_numeric_column(df, keywords)
+        
+        if not year_col or not count_col:
+            st.info(f"{data_type} 예측 데이터를 찾을 수 없습니다.")
+            return
+        
+        # 연도별 집계
+        yearly_data = df.groupby(year_col)[count_col].sum().reset_index()
+        yearly_data = yearly_data.sort_values(year_col)
+        
+        if len(yearly_data) < 3:
+            st.info(f"{data_type} 예측을 위한 충분한 데이터가 없습니다.")
+            return
+        
+        # 선형 회귀
+        x = yearly_data[year_col].values
+        y = yearly_data[count_col].values
+        
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+        
+        # 미래 연도 예측 (2년)
+        future_years = np.arange(x.max() + 1, x.max() + 3)
+        future_values = slope * future_years + intercept
+        
+        # 전체 트렌드 라인
+        all_years = np.arange(x.min(), x.max() + 3)
+        trend_line = slope * all_years + intercept
+        
+        # 그래프 생성
+        fig = go.Figure()
+        
+        # 실제 데이터
+        fig.add_trace(go.Scatter(
+            x=yearly_data[year_col],
+            y=yearly_data[count_col],
+            mode='markers+lines',
+            name=f'실제 {data_type} 수',
+            line=dict(color='blue', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # 트렌드 라인
+        fig.add_trace(go.Scatter(
+            x=all_years,
+            y=trend_line,
+            mode='lines',
+            name='예측 트렌드',
+            line=dict(color='red', width=2, dash='dash')
+        ))
+        
+        # 예측 구간 표시
+        fig.add_vrect(
+            x0=x.max() + 0.5, x1=future_years.max() + 0.5,
+            fillcolor="rgba(255,0,0,0.1)",
+            layer="below",
+            line_width=0,
+        )
+        
+        fig.update_layout(
+            title=f'{data_type} 수 예측 (R² = {r_value**2:.3f})',
+            xaxis_title='연도',
+            yaxis_title=f'{data_type} 수',
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 예측 결과 표시
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(f"{future_years[0]}년 예측", f"{future_values[0]:,.0f}")
+        with col2:
+            st.metric(f"{future_years[1]}년 예측", f"{future_values[1]:,.0f}")
+        
+        # 신뢰도 표시
+        confidence = "높음" if r_value**2 > 0.8 else "중간" if r_value**2 > 0.5 else "낮음"
+        st.info(f"📊 예측 신뢰도: {confidence} (R² = {r_value**2:.3f})")
+        
+    except Exception as e:
+        st.error(f"{data_type} 예측 분석 오류: {e}")
