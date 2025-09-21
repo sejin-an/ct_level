@@ -59,7 +59,7 @@ def render_basic_timeseries(papers_df, patents_df):
 def render_paper_timeseries(papers_df):
     """논문 시계열 분석"""
     try:
-        year_col = safe_get_column(papers_df, ['year', '연도'])
+        year_col = safe_get_column(papers_df, ['Year', '연도'])
         papers_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
         
         if not year_col:
@@ -99,7 +99,7 @@ def render_paper_timeseries(papers_df):
 def render_patent_timeseries(patents_df):
     """특허 시계열 분석"""
     try:
-        year_col = safe_get_column(patents_df, ['year', '연도'])
+        year_col = safe_get_column(patents_df, ['Year', '연도'])
         patent_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
         
         if not year_col:
@@ -147,11 +147,11 @@ def render_combined_timeseries(papers_df, patents_df):
     
     try:
         # 논문 데이터 처리
-        paper_year_col = safe_get_column(papers_df, ['year', '연도'])
+        paper_year_col = safe_get_column(papers_df, ['Year', '연도'])
         paper_count_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
         
         # 특허 데이터 처리
-        patent_year_col = safe_get_column(patents_df, ['year', '연도'])
+        patent_year_col = safe_get_column(patents_df, ['Year', '연도'])
         patent_count_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
         
         if not paper_year_col or not patent_year_col:
@@ -268,7 +268,7 @@ def render_cumulative_trends(papers_df, patents_df):
 def render_cumulative_chart(df, data_type, keywords):
     """누적 차트 렌더링"""
     try:
-        year_col = safe_get_column(df, ['year', '연도'])
+        year_col = safe_get_column(df, ['Year', '연도'])
         count_col = safe_get_numeric_column(df, keywords)
         
         if not year_col:
@@ -322,7 +322,7 @@ def render_growth_rate_analysis(papers_df, patents_df):
 def render_detailed_growth_analysis(df, data_type, keywords):
     """상세 성장률 분석"""
     try:
-        year_col = safe_get_column(df, ['year', '연도'])
+        year_col = safe_get_column(df, ['Year', '연도'])
         count_col = safe_get_numeric_column(df, keywords)
         
         if not year_col:
@@ -377,11 +377,11 @@ def render_growth_comparison(papers_df, patents_df):
             return
         
         # 논문 성장률 계산
-        paper_year_col = safe_get_column(papers_df, ['year', '연도'])
+        paper_year_col = safe_get_column(papers_df, ['Year', '연도'])
         paper_count_col = safe_get_numeric_column(papers_df, ['total', 'paper', '논문'])
         
         # 특허 성장률 계산
-        patent_year_col = safe_get_column(patents_df, ['year', '연도'])
+        patent_year_col = safe_get_column(patents_df, ['Year', '연도'])
         patent_count_col = safe_get_numeric_column(patents_df, ['patent', 'count', '특허'])
         
         if not paper_year_col or not patent_year_col:
@@ -407,12 +407,12 @@ def render_growth_comparison(papers_df, patents_df):
         
         if len(common_years) > 1:
             comparison_data = []
-            for year in sorted(common_years):
-                if not (pd.isna(paper_growth[year]) or pd.isna(patent_growth[year])):
+            for Year in sorted(common_years):
+                if not (pd.isna(paper_growth[Year]) or pd.isna(patent_growth[Year])):
                     comparison_data.append({
-                        'Year': year,
-                        'Paper_Growth': paper_growth[year],
-                        'Patent_Growth': patent_growth[year]
+                        'Year': Year,
+                        'Paper_Growth': paper_growth[Year],
+                        'Patent_Growth': patent_growth[Year]
                     })
             
             if comparison_data:
@@ -462,7 +462,7 @@ def render_forecast_trend(papers_df, patents_df):
 def render_simple_forecast(df, data_type, keywords):
     """단순 선형 예측"""
     try:
-        year_col = safe_get_column(df, ['year', '연도'])
+        year_col = safe_get_column(df, ['Year', '연도'])
         count_col = safe_get_numeric_column(df, keywords)
         
         if not year_col:
