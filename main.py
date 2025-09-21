@@ -406,13 +406,13 @@ def filter_data_by_controls(papers_df, patents_df, controls):
     return filtered_papers, filtered_patents
 
 def render_full_dashboard(papers_df, patents_df, summary, controls):
-    """전체 대시보드 렌더링 (스마트 기능 통합)"""
+    """전체 대시보드 렌더링 (세로 레이아웃)"""
     if IMPORTS_SUCCESSFUL:
         # 1. 요약 메트릭
         render_summary_metrics(summary)
         st.markdown("---")
         
-        # 2. 스마트 시계열 분석 (자동 차트 선택)
+        # 2. 스마트 시계열 분석 (세로 배치)
         render_smart_timeseries(papers_df, patents_df)
         st.markdown("---")
         
@@ -421,17 +421,17 @@ def render_full_dashboard(papers_df, patents_df, summary, controls):
             render_label_analysis_dashboard(papers_df, patents_df, controls['selected_labels'])
             st.markdown("---")
         
-        # 4. 국가별 분석
+        # 4. 국가별 분석 (세로 배치)
         render_top_countries_metrics(papers_df, top_n=5)
         st.markdown("---")
         
-        # 5. 비교 게이지
+        # 5. 비교 게이지 (세로 배치)
         render_comparison_gauge(papers_df, patents_df)
     else:
         st.error("컴포넌트를 로드할 수 없어 대시보드를 표시할 수 없습니다.")
 
 def render_label_analysis_dashboard(papers_df, patents_df, selected_labels):
-    """기술 분야별 분석 대시보드 (label_s 활용)"""
+    """기술 분야별 분석 대시보드 (세로 레이아웃, label_s 활용)"""
     st.subheader("🔬 선택된 기술 분야 분석")
     
     # 실제 라벨 값 추출
@@ -445,23 +445,26 @@ def render_label_analysis_dashboard(papers_df, patents_df, selected_labels):
         else:
             actual_labels.append(label)
     
-    # label_m으로 필터링된 데이터에서 label_s로 세부 분석
-    tab1, tab2, tab3 = st.tabs(["📊 label_s 세부 분석", "📈 시계열 추이", "🌍 국가별 분포"])
+    # label_s 세부 분석 (세로 배치)
+    st.subheader("📊 label_s 세부 분류")
+    col1, col2 = st.columns(2)
+    with col1:
+        if papers_df is not None:
+            render_label_s_analysis(papers_df, actual_labels, "논문")
+    with col2:
+        if patents_df is not None:
+            render_label_s_analysis(patents_df, actual_labels, "특허")
     
-    with tab1:
-        col1, col2 = st.columns(2)
-        with col1:
-            if papers_df is not None:
-                render_label_s_analysis(papers_df, actual_labels, "논문")
-        with col2:
-            if patents_df is not None:
-                render_label_s_analysis(patents_df, actual_labels, "특허")
+    st.markdown("---")
     
-    with tab2:
-        render_label_timeseries_analysis(papers_df, patents_df, actual_labels)
+    # 시계열 추이 (세로 배치)
+    st.subheader("📈 기술 분야 시계열 추이")
+    render_label_timeseries_analysis(papers_df, patents_df, actual_labels)
     
-    with tab3:
-        render_label_country_analysis(papers_df, patents_df, actual_labels)
+    st.markdown("---")
+    
+    # 국가별 분포 (세로 배치)
+    render_label_country_analysis(papers_df, patents_df, actual_labels)
 
 def render_label_s_analysis(df, label_m_values, data_type):
     """label_s 기반 세부 분석"""
@@ -517,15 +520,14 @@ def render_label_s_analysis(df, label_m_values, data_type):
         st.error(f"{data_type} label_s 분석 오류: {e}")
 
 def render_label_timeseries_analysis(papers_df, patents_df, label_m_values):
-    """라벨별 시계열 분석"""
-    st.subheader("📈 선택된 기술 분야 시계열 추이")
+    """라벨별 시계열 분석 (세로 배치)"""
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
+    # 논문 시계열
+    if papers_df is not None:
         render_single_label_timeseries(papers_df, label_m_values, "논문")
     
-    with col2:
+    # 특허 시계열  
+    if patents_df is not None:
         render_single_label_timeseries(patents_df, label_m_values, "특허")
 
 def render_single_label_timeseries(df, label_m_values, data_type):
