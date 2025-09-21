@@ -216,6 +216,8 @@ def render_innovation_analysis(patents_df):
     st.subheader("💡 특허의 질적지표 비교")
     
     try:
+        import plotly.express as px
+        
         # 상위 10개국 선정
         top_countries = patents_df.groupby('Country')['Total_Papers'].sum().nlargest(10).index.tolist()
         patents_clean, valid_years = safe_get_year_data(patents_df)
